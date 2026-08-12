@@ -4,7 +4,7 @@
 
 LinuxDroid needs an Android device with an ARM processor supported by the selected RootFS. Most modern devices are `arm64-v8a`; older 32-bit devices are commonly `armeabi-v7a`. The RootFS architecture must match the device. The app runs a Linux **userland**, not a complete virtual machine: it cannot boot a Linux kernel, gain Android root, run Docker, load kernel modules, or reliably use systemd. [1]
 
-Open **Configure RootFS source** and paste the direct HTTPS URL of your project’s `catalog.json`. LinuxDroid refuses non-HTTPS catalogs and refuses archives with a mismatched SHA-256. Choose **Install a distribution**, select an available image, and wait for verification and extraction to finish. You may install several distributions, but LinuxDroid allows only one active session so two PRoot processes cannot compete for memory and storage.
+Wait for the **RootFS release status** card to report that the LinuxDroid release is online, then choose **Install distro**. LinuxDroid discovers compatible archives directly from the project's `rootfs-pack-1` GitHub Release and verifies every archive against its published SHA-256 sidecar before extraction. Select an image compatible with the device ABI and wait for verification and extraction to finish. You may install several distributions, but LinuxDroid allows only one active session so two PRoot processes cannot compete for memory and storage.
 
 ## 2. Shared files and privacy
 
@@ -67,7 +67,7 @@ If the device still kills LinuxDroid, restart the session and use a lighter desk
 | --- | --- | --- |
 | `exec format error` | RootFS architecture does not match device ABI. | Install the matching `arm64-v8a` or `armeabi-v7a` archive. |
 | `PRoot runtime ... not included` | The APK was built without running runtime preparation. | Rebuild through the supplied GitHub Actions workflow or run `scripts/prepare-runtime.sh` first. |
-| RootFS checksum mismatch | The release archive changed or catalog hash is incorrect. | Re-upload as a new version, recalculate SHA-256, and update the catalog. |
+| RootFS checksum mismatch | The release archive or its SHA-256 sidecar changed, or the download was corrupted. | Download again; maintainers must publish a new versioned asset with a matching `.sha256` sidecar rather than replacing existing bytes. |
 | VNC connection refused | Desktop server is not running or wrong port. | Run `~/start-linuxdroid-desktop`; verify `127.0.0.1:5901`. |
 | VNC authentication failed | Saved password differs from `~/.vnc/passwd`. | Set a new password with `vncpasswd`, then update internal VNC settings. |
 | Desktop starts then closes | Missing D-Bus or incompatible desktop package. | Re-run setup; inspect `~/.vnc/*.log`; try Fluxbox. |

@@ -1,12 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ld_background">#0B0F14</color>
-    <color name="ld_surface">#121923</color>
-    <color name="ld_surface_alt">#1A2330</color>
-    <color name="ld_primary">#74E2B8</color>
-    <color name="ld_primary_dark">#2B9D75</color>
-    <color name="ld_text">#EAF2F8</color>
-    <color name="ld_muted">#9CA9B7</color>
-    <color name="ld_danger">#FF8A80</color>
+    <color name="ld_background">#0B1020</color>
+    <color name="ld_surface">#151C32</color>
+    <color name="ld_surface_alt">#1B2541</color>
+    <color name="ld_outline">#33415F</color>
+    <color name="ld_primary">#9B8CFF</color>
+    <color name="ld_primary_dark">#6F5EE9</color>
+    <color name="ld_secondary">#36D6B0</color>
+    <color name="ld_text">#F4F7FF</color>
+    <color name="ld_muted">#AAB7D1</color>
     <color name="ld_terminal">#090D0A</color>
+
+    <color name="ld_hero_start">#6D4AE8</color>
+    <color name="ld_hero_middle">#385FE6</color>
+    <color name="ld_hero_end">#14BFA9</color>
+    <color name="ld_on_hero">#FFFFFF</color>
+    <color name="ld_on_hero_muted">#E3E7FF</color>
+    <color name="ld_hero_chip">#D9FFF5</color>
+    <color name="ld_status_ready">#3CE0B1</color>
+
+    <color name="ld_action_primary">#9B8CFF</color>
+    <color name="ld_on_action_primary">#160D45</color>
+    <color name="ld_action_success">#35D39A</color>
+    <color name="ld_on_action_success">#062D22</color>
+    <color name="ld_action_info">#58A7FF</color>
+    <color name="ld_on_action_info">#08264B</color>
+    <color name="ld_action_violet">#C084FC</color>
+    <color name="ld_on_action_violet">#350D54</color>
+    <color name="ld_action_warning">#FFBE5C</color>
+    <color name="ld_on_action_warning">#442700</color>
+    <color name="ld_action_danger">#FF718B</color>
+    <color name="ld_on_action_danger">#4A0A1C</color>
+
+    <color name="ld_distro_orange">#FF9D5C</color>
+    <color name="ld_distro_blue">#65B7FF</color>
+    <color name="ld_distro_cyan">#35D7D2</color>
+    <color name="ld_distro_green">#65DA84</color>
+    <color name="ld_distro_pink">#F78BC2</color>
+    <color name="ld_badge_text">#091421</color>
+
+    <color name="ld_danger">#FF718B</color>
 </resources>

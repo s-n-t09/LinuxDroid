@@ -26,3 +26,11 @@ app/src/main/assets/runtime/*/pulse/
 # Platform and logs
 .DS_Store
 *.log
+
+# RootFS preparation products are published as GitHub Release assets, not source files
+.rootfs-work/
+.rootfs-source-cache/
+rootfs/release-pack-*/
+rootfs/*.tar.xz
+rootfs/*.sha256
+rootfs/out/

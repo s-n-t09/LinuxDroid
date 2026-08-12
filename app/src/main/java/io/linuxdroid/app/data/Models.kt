@@ -68,7 +68,6 @@ data class VncProfile(
 
 @Serializable
 data class AppSettings(
-    val rootfsManifestUrl: String = "https://raw.githubusercontent.com/s-n-t09/LinuxDroid/main/rootfs/catalog.json",
     val enableAllFilesBinding: Boolean = false,
     val keepScreenAwake: Boolean = true,
     val pulseAudioEnabled: Boolean = true,

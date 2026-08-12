@@ -3,11 +3,16 @@
     <style name="Theme.LinuxDroid" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
         <item name="android:statusBarColor">@color/ld_background</item>
         <item name="android:navigationBarColor">@color/ld_background</item>
-        <item name="colorPrimary">@color/ld_primary</item>
-        <item name="colorOnPrimary">@color/ld_background</item>
-        <item name="colorSurface">@color/ld_surface</item>
         <item name="android:windowBackground">@color/ld_background</item>
+        <item name="colorPrimary">@color/ld_primary</item>
+        <item name="colorOnPrimary">@color/ld_on_action_primary</item>
+        <item name="colorSecondary">@color/ld_secondary</item>
+        <item name="colorSurface">@color/ld_surface</item>
+        <item name="colorOnSurface">@color/ld_text</item>
+        <item name="colorOutline">@color/ld_outline</item>
+        <item name="android:windowActionModeOverlay">true</item>
     </style>
 </resources>

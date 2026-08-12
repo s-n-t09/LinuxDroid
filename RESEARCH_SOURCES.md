@@ -52,3 +52,15 @@ Additional references:
 [12]: https://raw.githubusercontent.com/termux/termux-app/master/terminal-view/src/main/java/com/termux/view/TerminalViewClient.java "Termux TerminalViewClient API"
 [13]: https://github.com/iiordanov/remote-desktop-clients/blob/master/COPYRIGHT-bVNC "bVNC attribution and GPL-v3 terms"
 [14]: https://github.com/termux/termux-packages/tree/master/packages/pulseaudio "Termux PulseAudio Android build recipe"
+
+## Release-backed RootFS inventory (2026-08-13)
+
+LinuxDroid will use public GitHub Release assets as the installation source rather than a repository-hosted catalog. The application will query the GitHub Releases API for a single LinuxDroid RootFS pack tag and derive distribution entries from strict, versioned asset names and sibling SHA-256 assets.
+
+The official Termux PRoot Distro project documents plain rootfs tarball support and PRoot-based rootless Linux environments. Its historical RootFS releases supply verified ARM source images. Its v4.34.2 release, for example, explicitly publishes Arch Linux `aarch64` and `arm` images and provides per-asset SHA-256 digests. This project will preserve source-release provenance in the published `ROOTFS_SOURCES.md` file and will re-verify every downloaded source image before re-publishing an asset under LinuxDroid naming.
+
+References:
+- https://github.com/termux/proot-distro
+- https://github.com/termux/proot-distro/releases/tag/v4.34.2
+
+Planned native ABI mapping: `aarch64` -> `arm64-v8a`; `arm` -> `armeabi-v7a`. ARM64-only upstream images are surfaced only for `arm64-v8a`; the application will correctly mark them unavailable rather than substitute a mismatched image.

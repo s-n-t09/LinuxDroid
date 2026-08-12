@@ -1,19 +1,19 @@
 # LinuxDroid
 
-LinuxDroid is a native Android application for running a **single active Linux userland** through PRoot. It installs verified RootFS archives from a maintainer-controlled HTTPS catalog, keeps multiple installed distributions in app-private storage, provides a Termux-style terminal, opens a local internal VNC client, and exposes guest audio through a loopback-only PulseAudio host.
+LinuxDroid is a native Android application for running a **single active Linux userland** through PRoot. It installs verified RootFS archives discovered directly from the project's own GitHub Release, keeps multiple installed distributions in app-private storage, provides a Termux-style terminal, opens a local internal VNC client, and exposes guest audio through a loopback-only PulseAudio host.
 
 > PRoot is a userspace implementation of `chroot` and bind mounts. It does not provide a Linux kernel, kernel privileges, containers, Docker, systemd, or hardware-driver access. [1]
 
 ## Supported ABI targets
 
-| Artifact | ABI | RootFS requirement |
+| Artifact | ABI | Requirement |
 | --- | --- | --- |
 | LinuxDroid APK | `arm64-v8a` | Native 64-bit ARM Android device |
 | LinuxDroid APK | `armeabi-v7a` | Native 32-bit ARM Android device |
 | RootFS archive | `arm64-v8a` | AArch64 Linux userland |
-| RootFS archive | `armeabi-v7a` | ARMv7 Linux userland |
+| RootFS archive | `armeabi-v7a` | ARMv7 Linux userland, when published by its upstream provider |
 
-The build deliberately excludes x86, x86_64, and 32-bit legacy `armeabi` targets. One application build can include both runtime assets, while Gradle also emits ABI-specific APKs.
+The build deliberately excludes x86, x86_64, and the legacy `armeabi` target. One application build can include both runtime assets, while Gradle also emits ABI-specific APKs.
 
 ## Main features
 
@@ -23,11 +23,13 @@ The desktop setup dialog writes a guest setup script for XFCE, LXDE, MATE, or Fl
 
 Audio is designed around an Android-native PulseAudio runtime on `127.0.0.1:4713`. The runtime is assembled from the Termux PulseAudio package graph and invokes its Android sound sink. LinuxDroid sets `PULSE_SERVER=tcp:127.0.0.1:4713` in supported PRoot sessions. This behavior requires real-device testing because Android audio backends vary by vendor and Android release.
 
-## RootFS catalog
+## RootFS releases
 
-LinuxDroid intentionally does not ship an arbitrary third-party RootFS URL. Enter the direct HTTPS URL of **your own GitHub Release catalog** in **Configure RootFS source**. The catalog must use schema `1`, provide a SHA-256 hash for every downloadable archive, and include only `arm64-v8a` and/or `armeabi-v7a` artifacts.
+LinuxDroid queries the public GitHub Releases API for the project's fixed [`rootfs-pack-1` release](https://github.com/s-n-t09/LinuxDroid/releases/tag/rootfs-pack-1). Users select a discovered distribution from the app; no manual RootFS URL configuration is required.
 
-See [`rootfs/catalog.example.json`](rootfs/catalog.example.json) and [`rootfs/README.md`](rootfs/README.md). The installer resumes downloads when the server supports HTTP Range requests, verifies the exact archive SHA-256, extracts into a staging directory, and only then records the installation.
+The client accepts release assets named `linuxdroid-rootfs__<distro-id>__<version>__<android-abi>.tar.xz` together with a same-name `.sha256` sidecar. It verifies the SHA-256 checksum before extracting an archive. The current pack provides every checksum-bearing ARM RootFS currently available from the official Termux PRoot Distro release feed: all available `arm64-v8a` images and the subset currently published upstream for `armeabi-v7a`.
+
+See [`rootfs/README.md`](rootfs/README.md) for the release contract and reproducible preparation procedure. The installer resumes downloads when the server supports HTTP Range requests, verifies the exact archive SHA-256, extracts into a staging directory, and only then records the installation.
 
 ## Build
 

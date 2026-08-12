@@ -3,7 +3,6 @@ package io.linuxdroid.app.data
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -12,6 +11,7 @@ import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
 
+/** Downloads a release asset with resume support and enforces its SHA-256 checksum. */
 class RootfsNetwork {
     private val client = OkHttpClient.Builder()
         .followRedirects(true)
@@ -19,41 +19,22 @@ class RootfsNetwork {
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(90, TimeUnit.SECONDS)
         .build()
-    private val json = Json { ignoreUnknownKeys = true }
-
-    suspend fun fetchCatalog(url: String): RootfsCatalog = withContext(Dispatchers.IO) {
-        require(url.startsWith("https://")) { "The rootfs catalog URL must use HTTPS." }
-        val request = Request.Builder().url(url).header("Accept", "application/json").build()
-        client.newCall(request).execute().use { response ->
-            check(response.isSuccessful) { "Catalog request failed: HTTP ${response.code}" }
-            val body = response.body?.string().orEmpty()
-            val catalog = json.decodeFromString(RootfsCatalog.serializer(), body)
-            require(catalog.schema == 1) { "Unsupported rootfs catalog schema." }
-            require(catalog.distributions.all { definition ->
-                definition.id.matches(Regex("[a-z0-9][a-z0-9._-]{0,63}")) &&
-                    definition.architectures.keys.all { it in setOf("arm64-v8a", "armeabi-v7a") } &&
-                    definition.architectures.values.all { artifact ->
-                        artifact.url.startsWith("https://") && artifact.sha256.matches(Regex("[a-fA-F0-9]{64}"))
-                    }
-            }) { "Catalog contains invalid distribution metadata." }
-            catalog
-        }
-    }
 
     suspend fun downloadVerified(
         artifact: RootfsArtifact,
         output: File,
         onProgress: (downloaded: Long, total: Long) -> Unit
     ) = withContext(Dispatchers.IO) {
-        require(artifact.url.startsWith("https://")) { "Rootfs downloads must use HTTPS." }
+        require(artifact.url.startsWith("https://")) { "RootFS downloads must use HTTPS." }
+        require(artifact.sha256.matches(Regex("[a-fA-F0-9]{64}"))) { "RootFS SHA-256 metadata is invalid." }
         output.parentFile?.mkdirs()
         val partial = File(output.parentFile, "${output.name}.part")
         val offset = partial.takeIf { it.exists() }?.length() ?: 0L
-        val requestBuilder = Request.Builder().url(artifact.url)
+        val requestBuilder = Request.Builder().url(artifact.url).header("User-Agent", "LinuxDroid-RootFS")
         if (offset > 0L) requestBuilder.header("Range", "bytes=$offset-")
 
         client.newCall(requestBuilder.build()).execute().use { response ->
-            check(response.isSuccessful) { "Rootfs request failed: HTTP ${response.code}" }
+            check(response.isSuccessful) { "RootFS request failed: HTTP ${response.code}" }
             val append = offset > 0L && response.code == 206
             if (!append && partial.exists()) partial.delete()
             val initial = if (append) offset else 0L
@@ -77,16 +58,16 @@ class RootfsNetwork {
                     }
                     target.fd.sync()
                 }
-            } ?: error("Empty rootfs response body.")
+            } ?: error("Empty RootFS response body.")
         }
 
         val calculated = sha256(partial)
         check(calculated.equals(artifact.sha256, ignoreCase = true)) {
             partial.delete()
-            "Rootfs integrity verification failed (SHA-256 mismatch)."
+            "RootFS integrity verification failed (SHA-256 mismatch)."
         }
         if (output.exists()) output.delete()
-        check(partial.renameTo(output)) { "Could not finalize the verified rootfs archive." }
+        check(partial.renameTo(output)) { "Could not finalize the verified RootFS archive." }
     }
 
     fun sha256(file: File): String {

@@ -3,27 +3,33 @@ package io.linuxdroid.app
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
+import android.text.InputType
 import android.view.Gravity
 import android.view.View
-import android.widget.Button
+import android.widget.ArrayAdapter
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
-import android.widget.ArrayAdapter
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.card.MaterialCardView
 import io.linuxdroid.app.data.BrowserChoice
 import io.linuxdroid.app.data.DesktopEnvironment
 import io.linuxdroid.app.data.InstalledDistro
@@ -31,6 +37,7 @@ import io.linuxdroid.app.data.LocalRepository
 import io.linuxdroid.app.data.RootfsDefinition
 import io.linuxdroid.app.data.RootfsInstaller
 import io.linuxdroid.app.data.RootfsNetwork
+import io.linuxdroid.app.data.RootfsReleaseClient
 import io.linuxdroid.app.data.SetupSelection
 import io.linuxdroid.app.data.VncProfile
 import io.linuxdroid.app.domain.DesktopSetupBuilder
@@ -44,11 +51,22 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 class MainActivity : AppCompatActivity() {
+    private enum class ActionTone(val background: Int, val foreground: Int) {
+        PRIMARY(R.color.ld_action_primary, R.color.ld_on_action_primary),
+        SUCCESS(R.color.ld_action_success, R.color.ld_on_action_success),
+        INFO(R.color.ld_action_info, R.color.ld_on_action_info),
+        VIOLET(R.color.ld_action_violet, R.color.ld_on_action_violet),
+        WARNING(R.color.ld_action_warning, R.color.ld_on_action_warning),
+        DANGER(R.color.ld_action_danger, R.color.ld_on_action_danger)
+    }
+
     private val local by lazy { LocalRepository(this) }
     private val network = RootfsNetwork()
+    private val releaseClient = RootfsReleaseClient()
     private lateinit var installedContainer: LinearLayout
     private lateinit var status: TextView
-    private var catalog: List<RootfsDefinition> = emptyList()
+    private lateinit var installButton: MaterialButton
+    private var releaseDistributions: List<RootfsDefinition> = emptyList()
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -57,7 +75,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(buildScreen())
         requestFirstRunPermissions()
         refreshInstalled()
-        lifecycleScope.launch { loadCatalogSilently() }
+        lifecycleScope.launch { loadReleaseSilently() }
     }
 
     override fun onResume() {
@@ -68,32 +86,140 @@ class MainActivity : AppCompatActivity() {
     private fun buildScreen(): View {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 24, 24, 24)
+            setPadding(dp(20), dp(20), dp(20), dp(32))
         }
-        val title = TextView(this).apply {
-            text = "LinuxDroid"
-            textSize = 28f
-            setTextColor(getColor(R.color.ld_primary))
+
+        content.addView(buildHero(), linearParams(top = 0, bottom = 18))
+        content.addView(buildStatusCard(), linearParams(bottom = 16))
+
+        val commandTitle = sectionTitle("Command centre", "Your Linux environments, in one place")
+        content.addView(commandTitle, linearParams(bottom = 10))
+
+        val actionGrid = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
         }
-        status = TextView(this).apply {
-            text = "Ready. Configure your HTTPS RootFS catalog to begin."
-            setPadding(0, 12, 0, 12)
-        }
-        content.addView(title)
-        content.addView(status)
-        content.addView(actionButton("Configure RootFS source") { configureRootfsSource() })
-        content.addView(actionButton("Configure internal VNC") { configureVnc() })
-        content.addView(actionButton("Install a distribution") { showCatalog() })
-        content.addView(actionButton("Session controls") { showSessionControls() })
-        content.addView(TextView(this).apply { text = "Installed distributions"; textSize = 18f; setPadding(0, 28, 0, 8) })
+        val primaryRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        installButton = actionButton("Install distro", ActionTone.PRIMARY) { showReleaseDistributions() }
+        primaryRow.addView(installButton, weightParams(1f, end = 8))
+        primaryRow.addView(actionButton("Refresh", ActionTone.INFO) { lifecycleScope.launch { loadReleaseSilently() } }, weightParams(1f, start = 8))
+        actionGrid.addView(primaryRow)
+
+        val toolsRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        toolsRow.addView(actionButton("VNC settings", ActionTone.VIOLET) { configureVnc() }, weightParams(1f, top = 10, end = 8))
+        toolsRow.addView(actionButton("Session", ActionTone.WARNING) { showSessionControls() }, weightParams(1f, top = 10, start = 8))
+        actionGrid.addView(toolsRow)
+        content.addView(actionGrid, linearParams(bottom = 26))
+
+        content.addView(sectionTitle("Installed distributions", "Only one Linux session runs at a time"), linearParams(bottom = 10))
         installedContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(installedContainer)
-        return ScrollView(this).apply { addView(content) }
+
+        return ScrollView(this).apply {
+            setBackgroundColor(getColor(R.color.ld_background))
+            isFillViewport = true
+            addView(content, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
     }
 
-    private fun actionButton(label: String, action: () -> Unit): Button = Button(this).apply {
+    private fun buildHero(): View {
+        val hero = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(20), dp(20), dp(18), dp(20))
+            background = roundedGradient(R.color.ld_hero_start, R.color.ld_hero_middle, R.color.ld_hero_end, 28)
+            elevation = dp(5).toFloat()
+        }
+        hero.addView(ImageView(this).apply {
+            setImageResource(R.drawable.linuxdroid_logo)
+            contentDescription = "LinuxDroid logo"
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+        }, LinearLayout.LayoutParams(dp(66), dp(66)))
+        hero.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), 0, 0, 0)
+            addView(TextView(this@MainActivity).apply {
+                text = "LinuxDroid"
+                textSize = 30f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(getColor(R.color.ld_on_hero))
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "A colourful home for Linux on Android"
+                textSize = 14f
+                setPadding(0, dp(3), 0, 0)
+                setTextColor(getColor(R.color.ld_on_hero_muted))
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "PRoot  •  Terminal  •  VNC  •  Audio"
+                textSize = 12f
+                typeface = Typeface.DEFAULT_BOLD
+                setPadding(0, dp(10), 0, 0)
+                setTextColor(getColor(R.color.ld_hero_chip))
+            })
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        return hero
+    }
+
+    private fun buildStatusCard(): View = MaterialCardView(this).apply {
+        radius = dp(22).toFloat()
+        cardElevation = dp(1).toFloat()
+        setCardBackgroundColor(getColor(R.color.ld_surface))
+        strokeColor = getColor(R.color.ld_outline)
+        strokeWidth = dp(1)
+        addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            addView(View(this@MainActivity).apply {
+                background = roundedColor(getColor(R.color.ld_status_ready), 8)
+            }, LinearLayout.LayoutParams(dp(10), dp(10)))
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), 0, 0, 0)
+                addView(TextView(this@MainActivity).apply {
+                    text = "RootFS release status"
+                    textSize = 12f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(getColor(R.color.ld_muted))
+                })
+                status = TextView(this@MainActivity).apply {
+                    text = "Loading LinuxDroid RootFS release…"
+                    textSize = 15f
+                    setPadding(0, dp(2), 0, 0)
+                    setTextColor(getColor(R.color.ld_text))
+                }
+                addView(status)
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        })
+    }
+
+    private fun sectionTitle(title: String, subtitle: String): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        addView(TextView(this@MainActivity).apply {
+            text = title
+            textSize = 20f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(getColor(R.color.ld_text))
+        })
+        addView(TextView(this@MainActivity).apply {
+            text = subtitle
+            textSize = 13f
+            setPadding(0, dp(3), 0, 0)
+            setTextColor(getColor(R.color.ld_muted))
+        })
+    }
+
+    private fun actionButton(label: String, tone: ActionTone, action: () -> Unit): MaterialButton = MaterialButton(this).apply {
         text = label
         isAllCaps = false
+        minHeight = dp(48)
+        cornerRadius = dp(16)
+        insetTop = 0
+        insetBottom = 0
+        textSize = 14f
+        typeface = Typeface.DEFAULT_BOLD
+        backgroundTintList = ColorStateList.valueOf(getColor(tone.background))
+        setTextColor(getColor(tone.foreground))
         setOnClickListener { action() }
     }
 
@@ -119,54 +245,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun configureRootfsSource() {
-        lifecycleScope.launch {
-            val current = local.settings()
-            val input = EditText(this@MainActivity).apply {
-                hint = "https://github.com/OWNER/REPO/releases/download/CATALOG/catalog.json"
-                setText(current.rootfsManifestUrl)
-                inputType = android.text.InputType.TYPE_TEXT_VARIATION_URI
-            }
-            val storage = CheckBox(this@MainActivity).apply {
-                text = "Bind shared storage at /sdcard for Linux sessions"
-                isChecked = current.enableAllFilesBinding && Environment.isExternalStorageManager()
-            }
-            val column = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; setPadding(48, 0, 48, 0); addView(input); addView(storage) }
-            AlertDialog.Builder(this@MainActivity)
-                .setTitle("RootFS source and storage")
-                .setView(column)
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Save") { _, _ ->
-                    lifecycleScope.launch {
-                        val url = input.text.toString().trim()
-                        if (url.isNotEmpty() && !url.startsWith("https://")) {
-                            status.text = "RootFS catalog URLs must use HTTPS."
-                            return@launch
-                        }
-                        local.saveSettings(current.copy(rootfsManifestUrl = url, enableAllFilesBinding = storage.isChecked))
-                        if (storage.isChecked && !Environment.isExternalStorageManager()) requestAllFilesAccess()
-                        loadCatalogSilently()
-                    }
-                }
-                .show()
-        }
-    }
-
     private fun configureVnc() {
         lifecycleScope.launch {
             val current = local.settings()
             val profile = current.vnc
-            fun field(value: String, hint: String, inputType: Int = android.text.InputType.TYPE_CLASS_TEXT) = EditText(this@MainActivity).apply {
+            fun field(value: String, hint: String, inputType: Int = InputType.TYPE_CLASS_TEXT) = EditText(this@MainActivity).apply {
                 setText(value); this.hint = hint; this.inputType = inputType
             }
             val host = field(profile.host, "Host (normally 127.0.0.1)")
-            val port = field(profile.port.toString(), "Port", android.text.InputType.TYPE_CLASS_NUMBER)
-            val password = field(profile.password, "VNC password", android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD)
+            val port = field(profile.port.toString(), "Port", InputType.TYPE_CLASS_NUMBER)
+            val password = field(profile.password, "VNC password", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
             val command = field(profile.desktopCommand, "Desktop command")
             val readOnly = CheckBox(this@MainActivity).apply { text = "View only"; isChecked = profile.viewOnly }
             val scale = CheckBox(this@MainActivity).apply { text = "Scale desktop to fit"; isChecked = profile.scaleToFit }
             val form = LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.VERTICAL; setPadding(48, 0, 48, 0)
+                orientation = LinearLayout.VERTICAL; setPadding(dp(24), 0, dp(24), 0)
                 addView(host); addView(port); addView(password); addView(command); addView(readOnly); addView(scale)
             }
             AlertDialog.Builder(this@MainActivity)
@@ -194,18 +287,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showCatalog() {
-        if (catalog.isEmpty()) {
+    private fun showReleaseDistributions() {
+        if (releaseDistributions.isEmpty()) {
             lifecycleScope.launch {
-                loadCatalogSilently()
-                if (catalog.isEmpty()) status.text = "No catalog is loaded. Configure a valid HTTPS catalog URL first."
-                else showCatalog()
+                loadReleaseSilently()
+                if (releaseDistributions.isEmpty()) status.text = "The LinuxDroid RootFS release is not available yet."
+                else showReleaseDistributions()
             }
             return
         }
+        val abi = RuntimeInstaller(this, local).supportedAbi()
         AlertDialog.Builder(this)
             .setTitle("Choose a distribution")
-            .setItems(catalog.map { "${it.title} ${it.version}\n${it.description}" }.toTypedArray()) { _, index -> install(catalog[index]) }
+            .setItems(releaseDistributions.map { definition ->
+                val availability = if (definition.architectures.containsKey(abi)) "Available for $abi" else "Not published for $abi"
+                "${definition.title} ${definition.version}\n$availability · ${definition.description}"
+            }.toTypedArray()) { _, index -> install(releaseDistributions[index]) }
             .show()
     }
 
@@ -236,27 +333,90 @@ class MainActivity : AppCompatActivity() {
             val installed = local.listInstalled()
             installedContainer.removeAllViews()
             if (installed.isEmpty()) {
-                installedContainer.addView(TextView(this@MainActivity).apply { text = "No distributions installed yet." })
-            } else installed.forEach { installedContainer.addView(distributionRow(it)) }
+                installedContainer.addView(emptyStateCard())
+            } else installed.forEachIndexed { index, distro ->
+                installedContainer.addView(distributionRow(distro), linearParams(bottom = if (index == installed.lastIndex) 0 else 12))
+            }
         }
     }
 
-    private fun distributionRow(distro: InstalledDistro): View {
-        val row = LinearLayout(this).apply {
+    private fun emptyStateCard(): View = MaterialCardView(this).apply {
+        radius = dp(22).toFloat()
+        cardElevation = 0f
+        setCardBackgroundColor(getColor(R.color.ld_surface_alt))
+        strokeColor = getColor(R.color.ld_outline)
+        strokeWidth = dp(1)
+        addView(LinearLayout(this@MainActivity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(12, 16, 12, 16)
-            setBackgroundColor(getColor(R.color.ld_surface))
+            setPadding(dp(18), dp(18), dp(18), dp(18))
+            addView(TextView(this@MainActivity).apply {
+                text = "No distributions installed yet"
+                textSize = 17f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(getColor(R.color.ld_text))
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "Choose Install distro to download a verified RootFS directly from the LinuxDroid release."
+                textSize = 14f
+                setPadding(0, dp(6), 0, 0)
+                setTextColor(getColor(R.color.ld_muted))
+            })
+        })
+    }
+
+    private fun distributionRow(distro: InstalledDistro): View {
+        val accent = distroColor(distro.title)
+        return MaterialCardView(this).apply {
+            radius = dp(24).toFloat()
+            cardElevation = dp(2).toFloat()
+            setCardBackgroundColor(getColor(R.color.ld_surface))
+            strokeColor = getColor(R.color.ld_outline)
+            strokeWidth = dp(1)
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(View(this@MainActivity).apply {
+                    background = roundedColor(accent, 24)
+                }, LinearLayout.LayoutParams(dp(7), LinearLayout.LayoutParams.MATCH_PARENT))
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(16), dp(16), dp(12), dp(16))
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        addView(TextView(this@MainActivity).apply {
+                            text = distro.title
+                            textSize = 19f
+                            typeface = Typeface.DEFAULT_BOLD
+                            setTextColor(getColor(R.color.ld_text))
+                        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                        addView(TextView(this@MainActivity).apply {
+                            text = distro.architecture
+                            textSize = 11f
+                            typeface = Typeface.DEFAULT_BOLD
+                            setPadding(dp(9), dp(5), dp(9), dp(5))
+                            setTextColor(getColor(R.color.ld_badge_text))
+                            background = roundedColor(accent, 12)
+                        })
+                    })
+                    addView(TextView(this@MainActivity).apply {
+                        text = "${distro.version} · " + (distro.setup?.let { "${it.desktop} desktop · ${it.browser}" } ?: "Desktop not configured")
+                        textSize = 13f
+                        setPadding(0, dp(5), 0, 0)
+                        setTextColor(getColor(R.color.ld_muted))
+                    })
+                    val actions = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.START }
+                    actions.addView(actionButton("Start", ActionTone.SUCCESS) { startSession(distro) }, wrapParams(top = 14, end = 8))
+                    actions.addView(actionButton("Terminal", ActionTone.INFO) { startActivity(Intent(this@MainActivity, TerminalActivity::class.java)) }, wrapParams(top = 14, end = 8))
+                    actions.addView(actionButton("VNC", ActionTone.VIOLET) { startActivity(Intent(this@MainActivity, VncActivity::class.java)) }, wrapParams(top = 14, end = 8))
+                    actions.addView(actionButton("Setup", ActionTone.WARNING) { showSetup(distro) }, wrapParams(top = 14, end = 8))
+                    actions.addView(actionButton("Remove", ActionTone.DANGER) { removeDistro(distro) }, wrapParams(top = 14))
+                    addView(HorizontalScrollView(this@MainActivity).apply {
+                        isHorizontalScrollBarEnabled = false
+                        addView(actions)
+                    })
+                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            })
         }
-        row.addView(TextView(this).apply { text = "${distro.title} ${distro.version} (${distro.architecture})"; textSize = 17f })
-        row.addView(TextView(this).apply { text = distro.setup?.let { "Desktop: ${it.desktop}, browser: ${it.browser}" } ?: "Desktop not configured" })
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.START }
-        actions.addView(actionButton("Start") { startSession(distro) })
-        actions.addView(actionButton("Terminal") { startActivity(Intent(this, TerminalActivity::class.java)) })
-        actions.addView(actionButton("VNC") { startActivity(Intent(this, VncActivity::class.java)) })
-        actions.addView(actionButton("Setup") { showSetup(distro) })
-        actions.addView(actionButton("Remove") { removeDistro(distro) })
-        row.addView(HorizontalScrollView(this).apply { addView(actions) })
-        return row
     }
 
     private fun startSession(distro: InstalledDistro) {
@@ -304,9 +464,9 @@ class MainActivity : AppCompatActivity() {
         val desktop = Spinner(this).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, DesktopEnvironment.entries.map { it.name }) }
         val browser = Spinner(this).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, BrowserChoice.entries.map { it.name }) }
         val media = CheckBox(this).apply { text = "Install media and text utilities" }
-        val password = EditText(this).apply { hint = "VNC password (recommended)"; inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD }
+        val password = EditText(this).apply { hint = "VNC password (recommended)"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
         val form = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(48, 0, 48, 0)
+            orientation = LinearLayout.VERTICAL; setPadding(dp(24), 0, dp(24), 0)
             addView(TextView(this@MainActivity).apply { text = "Desktop" }); addView(desktop)
             addView(TextView(this@MainActivity).apply { text = "Browser" }); addView(browser)
             addView(media); addView(password)
@@ -350,14 +510,54 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private suspend fun loadCatalogSilently() {
-        val url = local.settings().rootfsManifestUrl
-        if (url.isBlank()) return
-        runCatching { network.fetchCatalog(url) }
+    private suspend fun loadReleaseSilently() {
+        runCatching { releaseClient.fetchDistributions() }
             .onSuccess { loaded ->
-                catalog = loaded.distributions
-                status.text = "RootFS catalog loaded: ${catalog.size} distribution(s)."
+                releaseDistributions = loaded
+                installButton.isEnabled = loaded.isNotEmpty()
+                status.text = "Release online · ${loaded.size} distribution(s) available."
             }
-            .onFailure { status.text = "Catalog error: ${it.message}" }
+            .onFailure {
+                installButton.isEnabled = false
+                status.text = "RootFS release error: ${it.message}"
+            }
     }
+
+    private fun distroColor(value: String): Int = getColor(
+        when {
+            value.contains("ubuntu", true) || value.contains("debian", true) -> R.color.ld_distro_orange
+            value.contains("arch", true) || value.contains("manjaro", true) -> R.color.ld_distro_blue
+            value.contains("fedora", true) || value.contains("rocky", true) || value.contains("alma", true) -> R.color.ld_distro_cyan
+            value.contains("alpine", true) || value.contains("void", true) -> R.color.ld_distro_green
+            else -> R.color.ld_distro_pink
+        }
+    )
+
+    private fun roundedGradient(start: Int, middle: Int, end: Int, radius: Int) = GradientDrawable(
+        GradientDrawable.Orientation.TL_BR,
+        intArrayOf(getColor(start), getColor(middle), getColor(end))
+    ).apply { cornerRadius = dp(radius).toFloat() }
+
+    private fun roundedColor(color: Int, radius: Int) = GradientDrawable().apply {
+        setColor(color)
+        cornerRadius = dp(radius).toFloat()
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun linearParams(top: Int = 0, bottom: Int = 0): LinearLayout.LayoutParams = LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.MATCH_PARENT,
+        LinearLayout.LayoutParams.WRAP_CONTENT
+    ).apply { setMargins(0, dp(top), 0, dp(bottom)) }
+
+    private fun weightParams(weight: Float, top: Int = 0, start: Int = 0, end: Int = 0): LinearLayout.LayoutParams = LinearLayout.LayoutParams(
+        0,
+        LinearLayout.LayoutParams.WRAP_CONTENT,
+        weight
+    ).apply { setMargins(dp(start), dp(top), dp(end), 0) }
+
+    private fun wrapParams(top: Int = 0, end: Int = 0): LinearLayout.LayoutParams = LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.WRAP_CONTENT,
+        LinearLayout.LayoutParams.WRAP_CONTENT
+    ).apply { setMargins(0, dp(top), dp(end), 0) }
 }
