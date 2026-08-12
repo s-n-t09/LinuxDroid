@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-08-13T00:00:00Z",
+  "distributions": [
+    {
+      "id": "debian-bookworm",
+      "title": "Debian 12 (Bookworm)",
+      "version": "12",
+      "description": "A LinuxDroid-compatible Debian Bookworm base image with command-line tools, locale support, and PulseAudio client environment defaults.",
+      "defaultUser": "root",
+      "homepage": "https://www.debian.org/",
+      "architectures": {
+        "arm64-v8a": {
+          "url": "https://github.com/s-n-t09/LinuxDroid/releases/download/rootfs-debian-bookworm-1/debian-bookworm-arm64-v8a.tar.xz",
+          "sha256": "a6bc7e218860642235de522f0425ddecfb3639975d52a3637ebad7bce5c2adf5",
+          "sizeBytes": 45662316,
+          "format": "tar.xz"
+        },
+        "armeabi-v7a": {
+          "url": "https://github.com/s-n-t09/LinuxDroid/releases/download/rootfs-debian-bookworm-1/debian-bookworm-armeabi-v7a.tar.xz",
+          "sha256": "eecee4f89836d5943dd141a0fb34018b49ad7fa3b48e39e78e4442e923945751",
+          "sizeBytes": 44380620,
+          "format": "tar.xz"
+        }
+      }
+    }
+  ]
+}
