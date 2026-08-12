@@ -1,0 +1,28 @@
+# Gradle and Android build outputs
+.gradle/
+build/
+**/build/
+local.properties
+.cxx/
+.externalNativeBuild/
+
+# Android Studio and IDEs
+.idea/
+*.iml
+.vscode/
+
+# Signing material and local secrets
+*.jks
+*.keystore
+keystore.properties
+github.properties
+
+# Prepared/downloaded runtime and temporary package indexes
+.runtime-work/
+.termux-packages-*.txt
+app/src/main/assets/runtime/*/proot
+app/src/main/assets/runtime/*/pulse/
+
+# Platform and logs
+.DS_Store
+*.log

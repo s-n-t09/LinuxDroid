@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ld_background">#0B0F14</color>
+    <color name="ld_surface">#121923</color>
+    <color name="ld_surface_alt">#1A2330</color>
+    <color name="ld_primary">#74E2B8</color>
+    <color name="ld_primary_dark">#2B9D75</color>
+    <color name="ld_text">#EAF2F8</color>
+    <color name="ld_muted">#9CA9B7</color>
+    <color name="ld_danger">#FF8A80</color>
+    <color name="ld_terminal">#090D0A</color>
+</resources>

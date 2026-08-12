@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-08-13T00:00:00Z",
+  "distributions": [
+    {
+      "id": "debian-bookworm",
+      "title": "Debian",
+      "version": "12",
+      "description": "LinuxDroid-maintained minimal Debian RootFS.",
+      "defaultUser": "root",
+      "homepage": "https://www.debian.org/",
+      "architectures": {
+        "arm64-v8a": {
+          "url": "https://github.com/REPLACE_OWNER/REPLACE_ROOTFS_REPO/releases/download/debian-12.0/debian-bookworm-arm64-v8a.tar.xz",
+          "sha256": "REPLACE_WITH_64_HEX_SHA256",
+          "sizeBytes": 0,
+          "format": "tar.xz"
+        },
+        "armeabi-v7a": {
+          "url": "https://github.com/REPLACE_OWNER/REPLACE_ROOTFS_REPO/releases/download/debian-12.0/debian-bookworm-armeabi-v7a.tar.xz",
+          "sha256": "REPLACE_WITH_64_HEX_SHA256",
+          "sizeBytes": 0,
+          "format": "tar.xz"
+        }
+      }
+    }
+  ]
+}
