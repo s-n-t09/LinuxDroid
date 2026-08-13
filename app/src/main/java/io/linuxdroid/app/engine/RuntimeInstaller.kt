@@ -13,6 +13,7 @@ class RuntimeInstaller(context: Context, private val local: LocalRepository) {
     data class RuntimePaths(
         val abi: String,
         val proot: File,
+        val prootLoader: File,
         val pulseBinary: File?,
         val pulseLibraryDirectory: File?,
         val pulseModuleDirectory: File?
@@ -44,10 +45,15 @@ class RuntimeInstaller(context: Context, private val local: LocalRepository) {
             "Android did not expose the packaged PRoot binary as executable: ${packagedProot.absolutePath}"
         }
         val proot = packagedProot
+        val packagedLoader = File(appContext.applicationInfo.nativeLibraryDir, "libproot_loader.so")
+        check(packagedLoader.isFile && packagedLoader.canExecute()) {
+            "The matching PRoot loader was not extracted by Android. Reinstall the current LinuxDroid APK so libproot_loader.so is installed in the native library directory."
+        }
         val pulse = File(target, "pulse/bin/pulseaudio").takeIf { it.isFile }?.also { it.setExecutable(true, true) }
         RuntimePaths(
             abi = abi,
             proot = proot,
+            prootLoader = packagedLoader,
             pulseBinary = pulse,
             pulseLibraryDirectory = File(target, "pulse/lib").takeIf { it.isDirectory },
             pulseModuleDirectory = File(target, "pulse/lib").takeIf { it.isDirectory }

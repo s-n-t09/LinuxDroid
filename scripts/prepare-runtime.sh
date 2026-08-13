@@ -32,6 +32,7 @@ prepare_proot() {
   # APK assets are extracted into app data, which can be mounted noexec. Package
   # PRoot as a native library too so Android installs it under nativeLibraryDir.
   install -m 0755 "$WORK/root/bin/proot" "$native_target/libproot.so"
+  install -m 0755 "$WORK/root/libexec/proot/loader" "$native_target/libproot_loader.so"
   rm -rf "$WORK/root"
 }
 

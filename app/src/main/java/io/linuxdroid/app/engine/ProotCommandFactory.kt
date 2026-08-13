@@ -47,7 +47,8 @@ class ProotCommandFactory {
             "TERM=xterm-256color",
             "COLORTERM=truecolor",
             "LANG=C.UTF-8",
-            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "PROOT_LOADER=${runtime.prootLoader.absolutePath}"
         )
         if (settings.pulseAudioEnabled && runtime.pulseBinary != null) {
             environment += "PULSE_SERVER=tcp:127.0.0.1:4713"
