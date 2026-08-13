@@ -26,6 +26,7 @@ class LinuxSessionController(context: Context) : TerminalSessionClient {
     private val runtimeInstaller = RuntimeInstaller(appContext, local)
     private val prootCommands = ProotCommandFactory()
     private val pulseAudio = PulseAudioController(local)
+    private val sessionLog = SessionLogStore(local)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutex = Mutex()
 
@@ -47,8 +48,9 @@ class LinuxSessionController(context: Context) : TerminalSessionClient {
             val settings: AppSettings = local.settings()
             RootfsLayout.normalizeTopLevelDirectory(java.io.File(distro.rootfsDirectory))
             val runtime = runtimeInstaller.ensureInstalled()
-            if (settings.pulseAudioEnabled) pulseAudio.start(runtime)
             val launch = prootCommands.createInteractiveLaunch(distro, runtime, settings)
+            sessionLog.begin(distro.title, java.io.File(distro.rootfsDirectory), launch)
+            if (settings.pulseAudioEnabled) pulseAudio.start(runtime)
             return@withLock TerminalSession(
                 launch.shellPath,
                 launch.workingDirectory,
@@ -64,6 +66,7 @@ class LinuxSessionController(context: Context) : TerminalSessionClient {
                 _state.value = SessionState.RUNNING
             }
         } catch (error: Throwable) {
+            sessionLog.recordStartFailure(error)
             _state.value = SessionState.FAILED
             pulseAudio.stop()
             throw error
@@ -96,6 +99,7 @@ class LinuxSessionController(context: Context) : TerminalSessionClient {
             mutex.withLock {
                 if (session === finishedSession) {
                     val code = finishedSession.exitStatus
+                    sessionLog.recordExit(finishedSession, code)
                     session = null
                     activeDistro = null
                     pulseAudio.stop()

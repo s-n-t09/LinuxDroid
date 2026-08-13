@@ -1,6 +1,8 @@
 package io.linuxdroid.app
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
@@ -43,6 +45,7 @@ import io.linuxdroid.app.data.VncProfile
 import io.linuxdroid.app.domain.DesktopSetupBuilder
 import io.linuxdroid.app.engine.LinuxRuntime
 import io.linuxdroid.app.engine.RuntimeInstaller
+import io.linuxdroid.app.engine.SessionLogStore
 import io.linuxdroid.app.service.LinuxSessionService
 import io.linuxdroid.app.ui.TerminalActivity
 import io.linuxdroid.app.vnc.VncActivity
@@ -108,6 +111,9 @@ class MainActivity : AppCompatActivity() {
         toolsRow.addView(actionButton("VNC settings", ActionTone.VIOLET) { configureVnc() }, weightParams(1f, top = 10, end = 8))
         toolsRow.addView(actionButton("Session", ActionTone.WARNING) { showSessionControls() }, weightParams(1f, top = 10, start = 8))
         actionGrid.addView(toolsRow)
+        val diagnosticsRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        diagnosticsRow.addView(actionButton("Session logs", ActionTone.INFO) { showSessionLog() }, weightParams(1f, top = 10))
+        actionGrid.addView(diagnosticsRow)
         content.addView(actionGrid, linearParams(bottom = 26))
 
         content.addView(sectionTitle("Installed distributions", "Only one Linux session runs at a time"), linearParams(bottom = 10))
@@ -287,6 +293,33 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showSessionLog() {
+        val logStore = SessionLogStore(local)
+        val output = TextView(this).apply {
+            text = logStore.read()
+            typeface = Typeface.MONOSPACE
+            textSize = 11f
+            setTextColor(getColor(R.color.ld_text))
+            setTextIsSelectable(true)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        val scroll = ScrollView(this).apply { addView(output) }
+        AlertDialog.Builder(this)
+            .setTitle("Latest session diagnostics")
+            .setView(scroll)
+            .setNegativeButton("Close", null)
+            .setNeutralButton("Clear") { _, _ ->
+                logStore.clear()
+                status.text = "Session log cleared."
+            }
+            .setPositiveButton("Copy") { _, _ ->
+                val clipboard = getSystemService(ClipboardManager::class.java)
+                clipboard.setPrimaryClip(ClipData.newPlainText("LinuxDroid session log", output.text))
+                status.text = "Session log copied to clipboard."
+            }
+            .show()
+    }
+
     private fun showReleaseDistributions() {
         if (releaseDistributions.isEmpty()) {
             lifecycleScope.launch {
@@ -297,13 +330,54 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val abi = RuntimeInstaller(this, local).supportedAbi()
-        AlertDialog.Builder(this)
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+        }
+        lateinit var dialog: AlertDialog
+        releaseDistributions.forEach { definition ->
+            val available = definition.architectures.containsKey(abi)
+            val accent = distroColor(definition.title)
+            val card = MaterialCardView(this).apply {
+                radius = dp(18).toFloat()
+                cardElevation = 0f
+                setCardBackgroundColor(getColor(if (available) R.color.ld_surface else R.color.ld_surface_alt))
+                strokeColor = getColor(if (available) R.color.ld_outline else R.color.ld_muted)
+                strokeWidth = dp(1)
+                isEnabled = available
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(15), dp(13), dp(15), dp(13))
+                    addView(TextView(this@MainActivity).apply {
+                        text = "${definition.title}  ${definition.version}"
+                        textSize = 16f
+                        typeface = Typeface.DEFAULT_BOLD
+                        setTextColor(getColor(R.color.ld_text))
+                    })
+                    addView(TextView(this@MainActivity).apply {
+                        text = if (available) "Available for $abi · ${definition.description}" else "Not published for $abi"
+                        textSize = 12f
+                        setPadding(0, dp(5), 0, 0)
+                        setTextColor(getColor(R.color.ld_muted))
+                    })
+                })
+                setOnClickListener {
+                    if (available) {
+                        dialog.dismiss()
+                        install(definition)
+                    }
+                }
+            }
+            list.addView(card, linearParams(bottom = 9))
+            list.addView(View(this).apply { setBackgroundColor(getColor(accent)) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(2)).apply { setMargins(dp(12), 0, dp(12), dp(9)) })
+        }
+        val scroll = ScrollView(this).apply { addView(list) }
+        dialog = AlertDialog.Builder(this)
             .setTitle("Choose a distribution")
-            .setItems(releaseDistributions.map { definition ->
-                val availability = if (definition.architectures.containsKey(abi)) "Available for $abi" else "Not published for $abi"
-                "${definition.title} ${definition.version}\n$availability · ${definition.description}"
-            }.toTypedArray()) { _, index -> install(releaseDistributions[index]) }
-            .show()
+            .setView(scroll)
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.show()
     }
 
     private fun install(definition: RootfsDefinition) {
