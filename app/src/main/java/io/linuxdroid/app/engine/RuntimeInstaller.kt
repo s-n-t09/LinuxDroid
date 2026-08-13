@@ -36,11 +36,14 @@ class RuntimeInstaller(context: Context, private val local: LocalRepository) {
             copyAssetTree("runtime/$abi", target)
             marker.writeText("LinuxDroid runtime v1\n")
         }
-        val proot = File(target, "proot")
-        check(proot.isFile) {
-            "The PRoot runtime for $abi is not included in this build. Build the application with the runtime-preparation workflow."
+        val packagedProot = File(appContext.applicationInfo.nativeLibraryDir, "libproot.so")
+        val extractedProot = File(target, "proot")
+        val proot = when {
+            packagedProot.isFile -> packagedProot
+            extractedProot.isFile -> extractedProot
+            else -> error("The PRoot runtime for $abi is not included in this build. Build the application with the runtime-preparation workflow.")
         }
-        check(proot.setExecutable(true, true)) { "Could not mark PRoot as executable." }
+        check(proot.canExecute() || proot.setExecutable(true, true)) { "Could not mark PRoot as executable." }
         val pulse = File(target, "pulse/bin/pulseaudio").takeIf { it.isFile }?.also { it.setExecutable(true, true) }
         RuntimePaths(
             abi = abi,

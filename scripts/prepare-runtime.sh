@@ -23,12 +23,15 @@ prepare_proot() {
       ;;
     *) echo "Unsupported ABI: $abi" >&2; exit 64 ;;
   esac
-  local package="$WORK/$archive" target="$ASSETS/$abi"
-  rm -rf "$target"; mkdir -p "$target"
+  local package="$WORK/$archive" target="$ASSETS/$abi" native_target="$ROOT/app/src/main/jniLibs/$abi"
+  rm -rf "$target"; mkdir -p "$target" "$native_target"
   curl --fail --location --retry 3 --proto '=https' --tlsv1.2 -o "$package" "$url"
   echo "$sha  $package" | sha256sum --check --status
   tar -xzf "$package" -C "$WORK"
   install -m 0755 "$WORK/root/bin/proot" "$target/proot"
+  # APK assets are extracted into app data, which can be mounted noexec. Package
+  # PRoot as a native library too so Android installs it under nativeLibraryDir.
+  install -m 0755 "$WORK/root/bin/proot" "$native_target/libproot.so"
   rm -rf "$WORK/root"
 }
 
