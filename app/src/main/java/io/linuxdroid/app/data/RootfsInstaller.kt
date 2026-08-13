@@ -50,6 +50,14 @@ class RootfsInstaller(private val local: LocalRepository) {
                             val entry = tar.nextTarEntry ?: break
                             val relative = sanitizeEntryName(entry.name)
                             if (relative.isEmpty()) continue
+                            // RootFS archives may carry device nodes and links such as
+                            // /dev/fd -> /proc/self/fd. PRoot binds Android's /dev at
+                            // runtime, so extracting these host-sensitive entries is
+                            // both unnecessary and unsafe on Android filesystems.
+                            if (isVirtualDeviceEntry(relative)) {
+                                files++
+                                continue
+                            }
                             val output = File(target, relative)
                             check(output.canonicalPath.startsWith(target.canonicalPath + File.separator)) {
                                 "Unsafe rootfs archive path rejected: ${entry.name}"
@@ -75,6 +83,11 @@ class RootfsInstaller(private val local: LocalRepository) {
             }
         }
         check(files > 0) { "Rootfs archive was empty." }
+    }
+
+    private fun isVirtualDeviceEntry(relative: String): Boolean {
+        val parts = relative.split('/')
+        return parts.firstOrNull() == "dev" || (parts.size > 1 && parts[1] == "dev")
     }
 
     private fun sanitizeEntryName(name: String): String {

@@ -25,6 +25,12 @@ class ProotCommandFactory {
             "--link2symlink",
             "-0",
             "-r", shellQuote(root.absolutePath),
+            // Bind the guest executable and loader paths explicitly. This avoids
+            // Android-host path resolution for ELF interpreters such as Alpine's
+            // /lib/ld-musl-aarch64.so.1 during the first execve.
+            "-b", "${shellQuote(root.absolutePath)}/bin:/bin",
+            "-b", "${shellQuote(root.absolutePath)}/lib:/lib",
+            "-b", "${shellQuote(root.absolutePath)}/usr:/usr",
             "-b", "/dev",
             "-b", "/proc",
             "-b", "/sys",
