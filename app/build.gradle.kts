@@ -12,8 +12,8 @@ android {
         applicationId = "io.linuxdroid.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -65,6 +65,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-service:2.8.7")
     implementation("androidx.recyclerview:recyclerview:1.4.0")
+    implementation("androidx.concurrent:concurrent-futures:1.2.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.datastore:datastore-preferences:1.1.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
@@ -72,7 +73,8 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.apache.commons:commons-compress:1.27.1")
     implementation("com.termux.termux-app:terminal-view:0.118.0")
-    implementation("com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava")
+    // ProfileInstaller and AndroidX Concurrent Futures require this concrete implementation at runtime.
+    implementation("com.google.guava:guava:33.3.1-android")
 
     testImplementation("junit:junit:4.13.2")
 }
