@@ -369,7 +369,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             list.addView(card, linearParams(bottom = 9))
-            list.addView(View(this).apply { setBackgroundColor(getColor(accent)) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(2)).apply { setMargins(dp(12), 0, dp(12), dp(9)) })
+            list.addView(View(this).apply { setBackgroundColor(accent) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(2)).apply { setMargins(dp(12), 0, dp(12), dp(9)) })
         }
         val scroll = ScrollView(this).apply { addView(list) }
         dialog = AlertDialog.Builder(this)
