@@ -20,6 +20,9 @@ class ProotCommandFactory {
     ): ProotLaunch {
         val root = File(distro.rootfsDirectory)
         require(root.isDirectory) { "Installed rootfs is unavailable." }
+        val guestShell = if (
+            (distro.id.startsWith("debian") || distro.id.startsWith("ubuntu")) && File(root, "bin/bash").isFile
+        ) "/bin/bash" else "/bin/sh"
         val command = mutableListOf(
             shellQuote(runtime.proot.absolutePath),
             "--link2symlink",
@@ -36,7 +39,7 @@ class ProotCommandFactory {
             "-b", "/sys",
             "-b", "${shellQuote(root.absolutePath)}/tmp:/tmp",
             "-w", "/root",
-            "/bin/sh", "-l"
+            guestShell, "-l"
         )
         if (settings.enableAllFilesBinding && Environment.isExternalStorageManager()) {
             val shared = Environment.getExternalStorageDirectory()
@@ -48,6 +51,7 @@ class ProotCommandFactory {
             "COLORTERM=truecolor",
             "LANG=C.UTF-8",
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "PS1=\\u@\\h:\\w\\# ",
             "PROOT_LOADER=${runtime.prootLoader.absolutePath}"
         )
         if (settings.pulseAudioEnabled && runtime.pulseBinary != null) {
@@ -70,7 +74,7 @@ class ProotCommandFactory {
     ): ProotLaunch {
         val base = createInteractiveLaunch(distro, runtime, settings)
         val adjusted = base.arguments.copyOf()
-        adjusted[2] = adjusted[2].removeSuffix(" /bin/sh -l") + " /bin/sh -lc ${shellQuote(guestCommand)}"
+        adjusted[2] = adjusted[2].substringBeforeLast(" -w ") + " -w /root /bin/sh -lc ${shellQuote(guestCommand)}"
         return base.copy(arguments = adjusted)
     }
 
