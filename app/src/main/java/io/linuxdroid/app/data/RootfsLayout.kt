@@ -20,11 +20,14 @@ internal object RootfsLayout {
         val wrapper = wrappers.single()
         val auxiliary = children.filterNot { it == wrapper }
         if (auxiliary.any { directory ->
-                directory.name !in bootstrapDirectories || !directory.isDirectory || isSymlink(directory) || directory.listFiles()?.isEmpty() != true
+                directory.name !in bootstrapDirectories || !directory.isDirectory || isSymlink(directory)
             }) return
-        // A failed pre-v0.1.5 install may have these empty host mount points next
-        // to the archive wrapper. Remove them only after the wrapper is proven safe.
-        auxiliary.forEach { directory -> check(directory.delete()) { "Could not remove empty RootFS bootstrap directory." } }
+        // Earlier installs may have created mount points beside the archive wrapper.
+        // They cannot contain guest data because the guest filesystem is still inside
+        // the verified wrapper, so remove them before promoting the wrapper safely.
+        auxiliary.forEach { directory ->
+            check(directory.deleteRecursively()) { "Could not remove obsolete RootFS bootstrap directory." }
+        }
 
         val nested = wrapper.listFiles()?.toList().orEmpty()
         check(nested.isNotEmpty()) { "RootFS wrapper directory is empty." }

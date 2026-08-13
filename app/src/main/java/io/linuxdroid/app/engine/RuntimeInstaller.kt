@@ -37,13 +37,13 @@ class RuntimeInstaller(context: Context, private val local: LocalRepository) {
             marker.writeText("LinuxDroid runtime v1\n")
         }
         val packagedProot = File(appContext.applicationInfo.nativeLibraryDir, "libproot.so")
-        val extractedProot = File(target, "proot")
-        val proot = when {
-            packagedProot.isFile -> packagedProot
-            extractedProot.isFile -> extractedProot
-            else -> error("The PRoot runtime for $abi is not included in this build. Build the application with the runtime-preparation workflow.")
+        check(packagedProot.isFile) {
+            "Executable PRoot was not extracted by Android. Reinstall the current LinuxDroid APK so libproot.so is installed in the native library directory."
         }
-        check(proot.canExecute() || proot.setExecutable(true, true)) { "Could not mark PRoot as executable." }
+        check(packagedProot.canExecute()) {
+            "Android did not expose the packaged PRoot binary as executable: ${packagedProot.absolutePath}"
+        }
+        val proot = packagedProot
         val pulse = File(target, "pulse/bin/pulseaudio").takeIf { it.isFile }?.also { it.setExecutable(true, true) }
         RuntimePaths(
             abi = abi,

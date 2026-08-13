@@ -37,6 +37,7 @@ class RootfsLayoutTest {
             listOf("dev", "proc", "sys", "tmp", "run", "root", "mnt", "sdcard").forEach {
                 check(File(root, it).mkdirs())
             }
+            File(root, "tmp/legacy-marker").writeText("obsolete bootstrap content")
 
             RootfsLayout.normalizeTopLevelDirectory(root)
 
