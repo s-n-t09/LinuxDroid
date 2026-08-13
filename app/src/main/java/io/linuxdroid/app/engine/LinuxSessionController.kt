@@ -46,10 +46,13 @@ class LinuxSessionController(context: Context) : TerminalSessionClient {
         _state.value = SessionState.STARTING
         try {
             val settings: AppSettings = local.settings()
-            RootfsLayout.normalizeTopLevelDirectory(java.io.File(distro.rootfsDirectory))
+            val rootfs = java.io.File(distro.rootfsDirectory)
+            RootfsLayout.normalizeTopLevelDirectory(rootfs)
+            RootfsLayout.rebaseGuestAbsoluteSymlinks(rootfs)
+            RootfsLayout.requireGuestShell(rootfs)
             val runtime = runtimeInstaller.ensureInstalled()
             val launch = prootCommands.createInteractiveLaunch(distro, runtime, settings)
-            sessionLog.begin(distro.title, java.io.File(distro.rootfsDirectory), launch)
+            sessionLog.begin(distro.title, rootfs, launch)
             if (settings.pulseAudioEnabled) pulseAudio.start(runtime)
             return@withLock TerminalSession(
                 launch.shellPath,

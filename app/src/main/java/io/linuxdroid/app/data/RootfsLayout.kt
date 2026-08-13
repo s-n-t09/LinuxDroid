@@ -1,14 +1,12 @@
 package io.linuxdroid.app.data
 
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.Paths
 
-/** Normalizes RootFS archives that wrap the actual filesystem in one top-level directory. */
+/** Normalizes PRoot Distro archive layouts for an Android-hosted guest filesystem. */
 internal object RootfsLayout {
-    /**
-     * PRoot Distro release archives commonly contain one wrapper such as
-     * `alpine-aarch64/`. LinuxDroid expects `/bin`, `/etc`, and `/usr` directly
-     * below [root], so promote the wrapper's children only when it is unambiguous.
-     */
+    /** Promotes a single archive wrapper such as `alpine-aarch64/` when present. */
     fun normalizeTopLevelDirectory(root: File) {
         val children = root.listFiles()?.toList().orEmpty()
         val wrappers = children.filter { candidate ->
@@ -22,9 +20,6 @@ internal object RootfsLayout {
         if (auxiliary.any { directory ->
                 directory.name !in bootstrapDirectories || !directory.isDirectory || isSymlink(directory)
             }) return
-        // Earlier installs may have created mount points beside the archive wrapper.
-        // They cannot contain guest data because the guest filesystem is still inside
-        // the verified wrapper, so remove them before promoting the wrapper safely.
         auxiliary.forEach { directory ->
             check(directory.deleteRecursively()) { "Could not remove obsolete RootFS bootstrap directory." }
         }
@@ -41,9 +36,34 @@ internal object RootfsLayout {
         check(wrapper.delete()) { "Could not remove RootFS wrapper directory." }
     }
 
+    /**
+     * An archive's absolute guest links are interpreted against Android's host root
+     * before PRoot starts. Rebase links whose targets exist inside [root], leaving
+     * virtual links such as `/proc/mounts` absolute for PRoot to provide.
+     */
+    fun rebaseGuestAbsoluteSymlinks(root: File) {
+        root.walkTopDown().forEach { link ->
+            if (!isSymlink(link)) return@forEach
+            val target = runCatching { Files.readSymbolicLink(link.toPath()).toString() }.getOrNull() ?: return@forEach
+            if (!target.startsWith('/')) return@forEach
+
+            val guestTarget = File(root, target.removePrefix("/"))
+            if (!guestTarget.exists() && !isSymlink(guestTarget)) return@forEach
+            val parent = link.parentFile ?: return@forEach
+            val relative = parent.toPath().relativize(guestTarget.toPath()).toString().replace(File.separatorChar, '/')
+            check(relative.isNotBlank()) { "Invalid absolute guest link: $target" }
+            Files.delete(link.toPath())
+            Files.createSymbolicLink(link.toPath(), Paths.get(relative))
+        }
+    }
+
+    fun requireGuestShell(root: File) {
+        check(File(root, "bin/sh").isFile) {
+            "RootFS does not provide an executable /bin/sh after layout normalization."
+        }
+    }
+
     private val bootstrapDirectories = setOf("dev", "proc", "sys", "tmp", "run", "root", "mnt", "sdcard")
 
-    private fun isSymlink(file: File): Boolean = runCatching {
-        file.canonicalFile != file.absoluteFile
-    }.getOrDefault(false)
+    private fun isSymlink(file: File): Boolean = Files.isSymbolicLink(file.toPath())
 }

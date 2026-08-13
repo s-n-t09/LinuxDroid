@@ -50,6 +50,27 @@ class RootfsLayoutTest {
     }
 
     @Test
+    fun rebasesAlpineAbsoluteShellLinkAfterPromotingWrapper() {
+        val root = Files.createTempDirectory("linuxdroid-rootfs-alpine-link").toFile()
+        try {
+            val wrapper = File(root, "alpine-aarch64")
+            check(File(wrapper, "bin").mkdirs())
+            check(File(wrapper, "etc").mkdirs())
+            File(wrapper, "bin/busybox").writeText("busybox")
+            Files.createSymbolicLink(File(wrapper, "bin/sh").toPath(), java.nio.file.Paths.get("/bin/busybox"))
+
+            RootfsLayout.normalizeTopLevelDirectory(root)
+            RootfsLayout.rebaseGuestAbsoluteSymlinks(root)
+            RootfsLayout.requireGuestShell(root)
+
+            assertTrue(File(root, "bin/sh").isFile)
+            assertTrue(Files.readSymbolicLink(File(root, "bin/sh").toPath()).toString().contains("busybox"))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun leavesAlreadyNormalizedRootfsUntouched() {
         val root = Files.createTempDirectory("linuxdroid-rootfs-normal").toFile()
         try {

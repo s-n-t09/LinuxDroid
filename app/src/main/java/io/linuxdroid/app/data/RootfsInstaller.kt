@@ -27,6 +27,8 @@ class RootfsInstaller(private val local: LocalRepository) {
         try {
             extractTar(archive, staging, onProgress)
             RootfsLayout.normalizeTopLevelDirectory(staging)
+            RootfsLayout.rebaseGuestAbsoluteSymlinks(staging)
+            RootfsLayout.requireGuestShell(staging)
             bootstrapFilesystem(staging)
             val finalDirectory = File(local.distributionsDirectory(), "${definition.id}-${UUID.randomUUID().toString().take(8)}")
             check(staging.renameTo(finalDirectory)) { "Could not finalize rootfs installation." }
