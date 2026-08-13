@@ -89,11 +89,22 @@ class RootfsInstaller(private val local: LocalRepository) {
     private fun createSafeSymlink(root: File, output: File, entry: TarArchiveEntry) {
         val link = entry.linkName
         require(link.isNotBlank()) { "Empty symbolic link in rootfs archive." }
-        if (!link.startsWith('/')) {
-            require(!link.split('/').any { it == ".." }) { "Unsafe relative symbolic link in rootfs archive." }
+        val rootPath = root.absolutePath
+        val outputPath = output.absolutePath
+        require(outputPath.startsWith(rootPath + File.separator)) { "Unsafe symbolic link path." }
+        if (link.startsWith('/')) {
+            // Absolute links are interpreted by the PRoot guest after installation.
+            // They cannot escape the Android app sandbox during archive extraction.
+        } else {
+            val linkPath = outputPath.removePrefix(rootPath).trimStart(File.separatorChar)
+            require(RootfsPathPolicy.isSafeRelativeSymlink(linkPath, link)) {
+                "Relative symbolic link escapes the RootFS: $link"
+            }
         }
-        output.parentFile?.mkdirs()
-        check(output.canonicalPath.startsWith(root.canonicalPath + File.separator)) { "Unsafe symbolic link path." }
+        output.parentFile?.let { parent ->
+            check(parent.mkdirs() || parent.isDirectory) { "Could not create symbolic-link parent directory." }
+            check(!isSymlink(parent)) { "Archive attempted to create a symbolic link through a link." }
+        }
         if (output.exists() || isSymlink(output)) output.delete()
         Os.symlink(link, output.absolutePath)
     }
