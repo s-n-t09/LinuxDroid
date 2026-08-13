@@ -12,8 +12,8 @@ android {
         applicationId = "io.linuxdroid.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.1.2"
+        versionCode = 4
+        versionName = "0.1.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -72,6 +72,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.apache.commons:commons-compress:1.27.1")
+    implementation("org.tukaani:xz:1.10")
     implementation("com.termux.termux-app:terminal-view:0.118.0")
     // ProfileInstaller and AndroidX Concurrent Futures require this concrete implementation at runtime.
     implementation("com.google.guava:guava:33.3.1-android")
