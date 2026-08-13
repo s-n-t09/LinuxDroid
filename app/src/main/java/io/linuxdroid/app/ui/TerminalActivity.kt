@@ -26,7 +26,17 @@ class TerminalActivity : AppCompatActivity(), TerminalViewClient {
         super.onCreate(savedInstanceState)
         val session = LinuxRuntime.controller(this).session
         if (session == null) {
-            setContentView(TextView(this).apply { text = "No Linux session is running."; setPadding(32, 32, 32, 32) })
+            setContentView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(32, 32, 32, 32)
+                addView(TextView(this@TerminalActivity).apply {
+                    text = "No Linux session is running. Return to the dashboard and start a distribution."
+                })
+                addView(Button(this@TerminalActivity).apply {
+                    text = "Back to dashboard"
+                    setOnClickListener { finish() }
+                })
+            })
             return
         }
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }

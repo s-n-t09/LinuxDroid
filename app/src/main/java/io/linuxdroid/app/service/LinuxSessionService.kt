@@ -47,7 +47,11 @@ class LinuxSessionService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannel()
-        LinuxRuntime.controller(this).onSessionEnded = { updateNotification("Session ended") }
+        LinuxRuntime.controller(this).onSessionEnded = { exitCode ->
+            updateNotification("Session ended (exit code $exitCode)")
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -82,6 +86,7 @@ class LinuxSessionService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        LinuxRuntime.controller(this).onSessionEnded = null
         scope.cancel()
         super.onDestroy()
     }

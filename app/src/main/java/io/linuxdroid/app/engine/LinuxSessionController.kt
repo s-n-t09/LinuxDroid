@@ -9,6 +9,7 @@ import com.termux.terminal.TerminalSessionClient
 import io.linuxdroid.app.data.AppSettings
 import io.linuxdroid.app.data.InstalledDistro
 import io.linuxdroid.app.data.LocalRepository
+import io.linuxdroid.app.data.RootfsLayout
 import io.linuxdroid.app.data.SessionState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +45,7 @@ class LinuxSessionController(context: Context) : TerminalSessionClient {
         _state.value = SessionState.STARTING
         try {
             val settings: AppSettings = local.settings()
+            RootfsLayout.normalizeTopLevelDirectory(java.io.File(distro.rootfsDirectory))
             val runtime = runtimeInstaller.ensureInstalled()
             if (settings.pulseAudioEnabled) pulseAudio.start(runtime)
             val launch = prootCommands.createInteractiveLaunch(distro, runtime, settings)
