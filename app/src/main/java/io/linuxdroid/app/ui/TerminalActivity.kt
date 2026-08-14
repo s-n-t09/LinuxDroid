@@ -27,6 +27,7 @@ import com.termux.terminal.TerminalSession
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
 import io.linuxdroid.app.engine.LinuxRuntime
+import io.linuxdroid.app.service.LinuxSessionService
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -148,10 +149,8 @@ class TerminalActivity : AppCompatActivity(), TerminalViewClient {
             .setTitle("Exit terminal?")
             .setMessage("Choose whether LinuxDroid should stop the active Linux sessions before leaving the terminal.")
             .setPositiveButton("Exit and stop sessions") { _, _ ->
-                lifecycleScope.launch {
-                    controller.stop()
-                    finish()
-                }
+                LinuxSessionService.stop(this)
+                finish()
             }
             .setNeutralButton("Exit without stopping sessions") { _, _ -> finish() }
             .setNegativeButton("Cancel", null)

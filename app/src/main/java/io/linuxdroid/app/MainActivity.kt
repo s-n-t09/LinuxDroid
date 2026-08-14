@@ -22,7 +22,6 @@ import android.widget.ArrayAdapter
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -190,13 +189,13 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val current = local.settings()
             addView(settingSwitch("Enable PulseAudio", "Start the private Android audio service for PRoot sessions", current.pulseAudioEnabled) { enabled ->
-                lifecycleScope.launch { local.saveSettings(local.settings().copy(pulseAudioEnabled = enabled)); status.text = "Audio setting saved. Restart the distribution to apply it." }
+                lifecycleScope.launch { local.saveSettings(local.settings().copy(pulseAudioEnabled = enabled)); showTemporaryRootfsStatus("Audio setting saved. Restart the distribution to apply it.") }
             }, linearParams(bottom = 10))
             addView(settingSwitch("Show LinuxDroid MOTD", "Display /etc/motd automatically in each new interactive shell", current.showMotdOnStart) { enabled ->
-                lifecycleScope.launch { local.saveSettings(local.settings().copy(showMotdOnStart = enabled)); status.text = "MOTD setting saved. Open a new terminal session to apply it." }
+                lifecycleScope.launch { local.saveSettings(local.settings().copy(showMotdOnStart = enabled)); showTemporaryRootfsStatus("MOTD setting saved. Open a new terminal session to apply it.") }
             }, linearParams(bottom = 10))
             addView(settingSwitch("Keep VNC screen awake", "Prevent screen sleep while the built-in VNC viewer is connected", current.vnc.keepScreenAwake) { enabled ->
-                lifecycleScope.launch { val settings = local.settings(); local.saveSettings(settings.copy(vnc = settings.vnc.copy(keepScreenAwake = enabled))); status.text = "VNC setting saved." }
+                lifecycleScope.launch { val settings = local.settings(); local.saveSettings(settings.copy(vnc = settings.vnc.copy(keepScreenAwake = enabled))); showTemporaryRootfsStatus("VNC setting saved.") }
             }, linearParams(bottom = 10))
         }
         addView(sectionTitle("Tools and diagnostics", "Connection, storage, session controls, and troubleshooting"), linearParams(top = 8, bottom = 10))
@@ -370,10 +369,10 @@ class MainActivity : AppCompatActivity() {
             val current = local.settings()
             if (!current.enableAllFilesBinding) local.saveSettings(current.copy(enableAllFilesBinding = true))
             if (Build.VERSION.SDK_INT >= 30 && !Environment.isExternalStorageManager()) {
-                status.text = "Enable All files access, then start the distribution to mount /storage/emulated/0."
+                showTemporaryRootfsStatus("Enable All files access, then start the distribution to mount /storage/emulated/0.")
                 requestAllFilesAccess()
             } else {
-                status.text = "Shared storage is enabled. Start or restart the distribution to mount /storage/emulated/0."
+                showTemporaryRootfsStatus("Shared storage is enabled. Start or restart the distribution to mount /storage/emulated/0.")
             }
         }
     }
@@ -425,7 +424,7 @@ class MainActivity : AppCompatActivity() {
                 .setPositiveButton("Save") { _, _ ->
                     lifecycleScope.launch {
                         val validPort = port.text.toString().toIntOrNull()?.takeIf { it in 1..65535 }
-                        if (validPort == null) { status.text = "VNC port must be between 1 and 65535."; return@launch }
+                        if (validPort == null) { showTemporaryRootfsStatus("VNC port must be between 1 and 65535."); return@launch }
                         val updated = VncProfile(
                             host = host.text.toString().trim().ifBlank { "127.0.0.1" },
                             port = validPort,
@@ -438,7 +437,7 @@ class MainActivity : AppCompatActivity() {
                             keepScreenAwake = keepAwake.isChecked
                         )
                         local.saveSettings(current.copy(vnc = updated))
-                        status.text = "VNC settings saved."
+                        showTemporaryRootfsStatus("VNC settings saved.")
                     }
                 }.show()
         }
@@ -461,12 +460,12 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton("Close", null)
             .setNeutralButton("Clear") { _, _ ->
                 logStore.clear()
-                status.text = "Session log cleared."
+                showTemporaryRootfsStatus("Session log cleared.")
             }
             .setPositiveButton("Copy") { _, _ ->
                 val clipboard = getSystemService(ClipboardManager::class.java)
                 clipboard.setPrimaryClip(ClipData.newPlainText("LinuxDroid session log", output.text))
-                status.text = "Session log copied to clipboard."
+                showTemporaryRootfsStatus("Session log copied to clipboard.")
             }
             .show()
     }
@@ -475,7 +474,7 @@ class MainActivity : AppCompatActivity() {
         if (releaseDistributions.isEmpty()) {
             lifecycleScope.launch {
                 loadReleaseSilently()
-                if (releaseDistributions.isEmpty()) status.text = "The LinuxDroid RootFS release is not available yet."
+                if (releaseDistributions.isEmpty()) showTemporaryRootfsStatus("The LinuxDroid RootFS release is not available yet.")
                 else showReleaseDistributions()
             }
             return
@@ -631,22 +630,28 @@ class MainActivity : AppCompatActivity() {
                         setPadding(0, dp(5), 0, 0)
                         setTextColor(getColor(R.color.ld_muted))
                     })
-                    val actions = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.START }
                     val isRunning = LinuxRuntime.controller(this@MainActivity).activeDistro?.installId == distro.installId
-                    actions.addView(
+                    fun actionRow() = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER
+                    }
+                    fun actionParams(top: Int, end: Int) = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        setMargins(0, dp(top), dp(end), 0)
+                    }
+                    val firstRow = actionRow()
+                    firstRow.addView(
                         actionButton(if (isRunning) "Stop" else "Start", if (isRunning) ActionTone.DANGER else ActionTone.SUCCESS) {
                             if (isRunning) stopSession(distro) else startSession(distro)
                         },
-                        wrapParams(top = 14, end = 8)
+                        actionParams(top = 14, end = 7)
                     )
-                    actions.addView(actionButton("Terminal", ActionTone.INFO) { startActivity(Intent(this@MainActivity, TerminalActivity::class.java)) }, wrapParams(top = 14, end = 8))
-                    actions.addView(actionButton("VNC", ActionTone.VIOLET) { startActivity(Intent(this@MainActivity, VncActivity::class.java)) }, wrapParams(top = 14, end = 8))
-                    actions.addView(actionButton("Setup", ActionTone.WARNING) { showSetup(distro) }, wrapParams(top = 14, end = 8))
-                    actions.addView(actionButton("Remove", ActionTone.DANGER) { removeDistro(distro) }, wrapParams(top = 14))
-                    addView(HorizontalScrollView(this@MainActivity).apply {
-                        isHorizontalScrollBarEnabled = false
-                        addView(actions)
-                    })
+                    firstRow.addView(actionButton("Terminal", ActionTone.INFO) { startActivity(Intent(this@MainActivity, TerminalActivity::class.java)) }, actionParams(top = 14, end = 7))
+                    firstRow.addView(actionButton("VNC", ActionTone.VIOLET) { startActivity(Intent(this@MainActivity, VncActivity::class.java)) }, actionParams(top = 14, end = 0))
+                    val secondRow = actionRow()
+                    secondRow.addView(actionButton("Setup", ActionTone.WARNING) { showSetup(distro) }, actionParams(top = 8, end = 7))
+                    secondRow.addView(actionButton("Remove", ActionTone.DANGER) { removeDistro(distro) }, actionParams(top = 8, end = 0))
+                    addView(firstRow)
+                    addView(secondRow)
                 }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             })
         }
@@ -656,7 +661,7 @@ class MainActivity : AppCompatActivity() {
         val controller = LinuxRuntime.controller(this)
         val active = controller.activeDistro
         if (active != null && active.installId != distro.installId) {
-            status.text = "Stop ${active.title} before starting another distribution."
+            showTemporaryRootfsStatus("Stop ${active.title} before starting another distribution.")
             return
         }
         if (active?.installId == distro.installId) {
@@ -664,25 +669,25 @@ class MainActivity : AppCompatActivity() {
             return
         }
         LinuxSessionService.start(this, distro.installId)
-        status.text = "Starting ${distro.title} in a foreground session…"
+        showTemporaryRootfsStatus("Starting ${distro.title} in a foreground session…")
         lifecycleScope.launch {
             repeat(32) {
                 delay(250)
                 if (controller.activeDistro?.installId == distro.installId && controller.session != null) {
-                    status.text = "${distro.title} is running. Opening terminal…"
+                    showTemporaryRootfsStatus("${distro.title} is running. Opening terminal…")
                     refreshInstalled()
                     startActivity(Intent(this@MainActivity, TerminalActivity::class.java))
                     return@launch
                 }
             }
-            status.text = "${distro.title} is still starting. Check the foreground notification or Session diagnostics."
+            showTemporaryRootfsStatus("${distro.title} is still starting. Check the foreground notification or Session diagnostics.")
             refreshInstalled()
         }
     }
 
     private fun stopSession(distro: InstalledDistro) {
         LinuxSessionService.stop(this)
-        status.text = "Stopping ${distro.title}…"
+        showTemporaryRootfsStatus("Stopping ${distro.title}…")
         lifecycleScope.launch {
             delay(500)
             refreshInstalled()
@@ -704,7 +709,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun removeDistro(distro: InstalledDistro) {
         if (LinuxRuntime.controller(this).activeDistro?.installId == distro.installId) {
-            status.text = "Stop this distribution before removing it."
+            showTemporaryRootfsStatus("Stop this distribution before removing it.")
             return
         }
         AlertDialog.Builder(this)
@@ -755,7 +760,7 @@ class MainActivity : AppCompatActivity() {
             }
             val controller = LinuxRuntime.controller(this@MainActivity)
             if (controller.activeDistro?.installId != distro.installId) {
-                status.text = "Could not start the session to run desktop setup."
+                showTemporaryRootfsStatus("Could not start the session to run desktop setup.")
                 return@launch
             }
             val script = DesktopSetupBuilder().build(selection)
@@ -765,7 +770,7 @@ class MainActivity : AppCompatActivity() {
                 val settings = local.settings()
                 local.saveSettings(settings.copy(vnc = settings.vnc.copy(password = selection.createVncPassword)))
             }
-            status.text = "Desktop setup was sent to ${distro.title}. Open Terminal to monitor installation, then run ~/start-linuxdroid-desktop and open VNC."
+            showTemporaryRootfsStatus("Desktop setup was sent to ${distro.title}. Open Terminal to monitor installation, then run ~/start-linuxdroid-desktop and open VNC.")
             refreshInstalled()
         }
     }

@@ -244,8 +244,17 @@ class RfbClient(private val profile: VncProfile, private val listener: Listener)
     private fun writePacket(block: DataOutputStream.() -> Unit) {
         synchronized(writeLock) {
             val destination = output ?: return
-            destination.block()
-            destination.flush()
+            runCatching {
+                destination.block()
+                destination.flush()
+            }.onFailure { error ->
+                // Touch and key events originate on the Android UI thread. A dropped
+                // socket must end the RFB connection cleanly rather than crash the viewer.
+                running = false
+                output = null
+                runCatching { socket?.close() }
+                listener.onDisconnected(error)
+            }
         }
     }
 

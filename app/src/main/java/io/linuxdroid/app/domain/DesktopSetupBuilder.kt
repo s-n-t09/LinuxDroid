@@ -16,8 +16,8 @@ class DesktopSetupBuilder {
             DesktopEnvironment.FLUXBOX -> "fluxbox"
         }
         val passwordCommand = selection.createVncPassword?.takeIf { it.isNotBlank() }?.let { password ->
-            "printf %s ${shellQuote(password)} | vncpasswd -f > \"${'$'}HOME/.config/tigervnc/passwd\" && chmod 600 \"${'$'}HOME/.config/tigervnc/passwd\""
-        } ?: "echo 'No VNC password was supplied. Set one with: vncpasswd'"
+            "if command -v vncpasswd >/dev/null 2>&1; then printf %s ${shellQuote(password)} | vncpasswd -f > \"${'$'}HOME/.vnc/passwd\"; else x11vnc -storepasswd ${shellQuote(password)} \"${'$'}HOME/.vnc/passwd\"; fi; chmod 600 \"${'$'}HOME/.vnc/passwd\""
+        } ?: "echo 'No VNC password was supplied. Before starting the desktop, run: x11vnc -storepasswd YOUR_PASSWORD ~/.vnc/passwd'"
 
         return """
             #!/bin/sh
@@ -37,7 +37,7 @@ class DesktopSetupBuilder {
               media_pkgs=""; [ "${'$'}MEDIA" = yes ] && media_pkgs="mpv vlc ffmpeg imagemagick nano vim less file"
               audio_pkgs="pulseaudio-utils libasound2-plugins"
               apt-get update
-              apt-get install -y ${'$'}desktop_pkgs tigervnc-standalone-server ${'$'}audio_pkgs ${'$'}browser_pkgs ${'$'}media_pkgs
+              apt-get install -y ${'$'}desktop_pkgs tightvncserver x11vnc xvfb ${'$'}audio_pkgs ${'$'}browser_pkgs ${'$'}media_pkgs
             }
             install_pacman() {
               case "${'$'}DESKTOP" in
@@ -49,7 +49,7 @@ class DesktopSetupBuilder {
               case "${'$'}BROWSER" in FIREFOX) browser_pkgs="firefox" ;; CHROMIUM) browser_pkgs="chromium" ;; *) browser_pkgs="" ;; esac
               media_pkgs=""; [ "${'$'}MEDIA" = yes ] && media_pkgs="mpv vlc ffmpeg imagemagick nano vim less file"
               audio_pkgs="pulseaudio alsa-plugins"
-              pacman -Syu --noconfirm ${'$'}desktop_pkgs tigervnc ${'$'}audio_pkgs ${'$'}browser_pkgs ${'$'}media_pkgs
+              pacman -Syu --noconfirm ${'$'}desktop_pkgs x11vnc xorg-server-xvfb ${'$'}audio_pkgs ${'$'}browser_pkgs ${'$'}media_pkgs
             }
             install_apk() {
               case "${'$'}DESKTOP" in
@@ -61,7 +61,7 @@ class DesktopSetupBuilder {
               case "${'$'}BROWSER" in FIREFOX) browser_pkgs="firefox-esr" ;; CHROMIUM) browser_pkgs="chromium" ;; *) browser_pkgs="" ;; esac
               media_pkgs=""; [ "${'$'}MEDIA" = yes ] && media_pkgs="mpv vlc ffmpeg imagemagick nano vim less file"
               audio_pkgs="pulseaudio-utils alsa-plugins-pulse"
-              apk add ${'$'}desktop_pkgs tigervnc ${'$'}audio_pkgs ${'$'}browser_pkgs ${'$'}media_pkgs
+              apk add ${'$'}desktop_pkgs x11vnc xvfb ${'$'}audio_pkgs ${'$'}browser_pkgs ${'$'}media_pkgs
             }
             install_dnf() {
               case "${'$'}DESKTOP" in
@@ -73,30 +73,51 @@ class DesktopSetupBuilder {
               case "${'$'}BROWSER" in FIREFOX) browser_pkgs="firefox" ;; CHROMIUM) browser_pkgs="chromium" ;; *) browser_pkgs="" ;; esac
               media_pkgs=""; [ "${'$'}MEDIA" = yes ] && media_pkgs="mpv vlc ffmpeg ImageMagick nano vim-enhanced less file"
               audio_pkgs="pulseaudio-utils alsa-plugins-pulseaudio"
-              dnf install -y ${'$'}desktop_pkgs tigervnc-server ${'$'}audio_pkgs ${'$'}browser_pkgs ${'$'}media_pkgs
+              dnf install -y ${'$'}desktop_pkgs x11vnc xorg-x11-server-Xvfb ${'$'}audio_pkgs ${'$'}browser_pkgs ${'$'}media_pkgs
             }
             if command -v apt-get >/dev/null 2>&1; then install_apt
             elif command -v pacman >/dev/null 2>&1; then install_pacman
             elif command -v apk >/dev/null 2>&1; then install_apk
             elif command -v dnf >/dev/null 2>&1; then install_dnf
-            else echo "Unsupported package manager. Install a VNC server and run ${desktopCommand}." >&2; exit 2
+            else echo "Unsupported package manager. Install x11vnc and Xvfb, then run ${desktopCommand}." >&2; exit 2
             fi
-            # TigerVNC 1.15+ uses ~/.config/tigervnc; ~/.vnc is deprecated.
-            rm -rf "${'$'}HOME/.vnc"
-            mkdir -p "${'$'}HOME/.config/tigervnc"
-            cat > "${'$'}HOME/.config/tigervnc/xstartup" <<'EOF'
+            mkdir -p "${'$'}HOME/.vnc"
+            ${passwordCommand}
+            cat > "${'$'}HOME/.vnc/xstartup" <<'EOF'
             #!/bin/sh
             unset SESSION_MANAGER
             unset DBUS_SESSION_BUS_ADDRESS
             ${desktopCommand}
             EOF
-            chmod 700 "${'$'}HOME/.config/tigervnc/xstartup"
-            ${passwordCommand}
+            chmod 700 "${'$'}HOME/.vnc/xstartup"
             cat > "${'$'}HOME/start-linuxdroid-desktop" <<'EOF'
             #!/bin/sh
             set -eu
-            vncserver -kill :1 >/dev/null 2>&1 || true
-            vncserver :1 -localhost yes -geometry 1280x720 -depth 24
+            DISPLAY_NUM=:1
+            VNC_PORT=5901
+            AUTH_FILE="${'$'}HOME/.vnc/passwd"
+            [ -f "${'$'}AUTH_FILE" ] || { echo "Set a VNC password first: x11vnc -storepasswd YOUR_PASSWORD ~/.vnc/passwd" >&2; exit 1; }
+            pkill -f "Xvfb ${'$'}DISPLAY_NUM" >/dev/null 2>&1 || true
+            pkill -f "x11vnc.*${'$'}DISPLAY_NUM" >/dev/null 2>&1 || true
+            if command -v tightvncserver >/dev/null 2>&1; then
+              tightvncserver -kill ${'$'}DISPLAY_NUM >/dev/null 2>&1 || true
+              tightvncserver ${'$'}DISPLAY_NUM -localhost -geometry 1280x720 -depth 24
+              exit 0
+            fi
+            Xvfb ${'$'}DISPLAY_NUM -screen 0 1280x720x24 -nolisten tcp >/tmp/linuxdroid-xvfb.log 2>&1 &
+            sleep 1
+            DISPLAY=${'$'}DISPLAY_NUM "${'$'}HOME/.vnc/xstartup" >/tmp/linuxdroid-desktop.log 2>&1 &
+            DISPLAY=${'$'}DISPLAY_NUM x11vnc \
+              -display ${'$'}DISPLAY_NUM \
+              -rfbauth "${'$'}AUTH_FILE" \
+              -forever \
+              -shared \
+              -localhost \
+              -rfbport ${'$'}VNC_PORT \
+              -noxdamage \
+              -nowf \
+              -noshm >/tmp/linuxdroid-x11vnc.log 2>&1 &
+            echo "Desktop started with Xvfb + x11vnc on 127.0.0.1:${'$'}VNC_PORT."
             EOF
             chmod 700 "${'$'}HOME/start-linuxdroid-desktop"
             echo "Desktop setup complete. Start it with: ~/start-linuxdroid-desktop"
