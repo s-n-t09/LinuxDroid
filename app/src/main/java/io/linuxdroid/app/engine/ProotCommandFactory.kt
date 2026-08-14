@@ -58,11 +58,17 @@ class ProotCommandFactory {
             "LANG=C.UTF-8",
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "PS1=\\u@\\h:\\w\\# ",
+            "LINUXDROID_MOTD_ENABLED=${if (settings.showMotdOnStart) "1" else "0"}",
             "PROOT_LOADER=${runtime.prootLoader.absolutePath}"
         )
         if (settings.pulseAudioEnabled && runtime.pulseBinary != null) {
+            // All guest clients communicate with LinuxDroid's private loopback
+            // PulseAudio daemon. ALSA clients use /etc/asound.conf from the RootFS.
             environment += "PULSE_SERVER=tcp:127.0.0.1:4713"
             environment += "PULSE_COOKIE=/tmp/linuxdroid-pulse.cookie"
+            environment += "PULSE_CLIENTCONFIG=/etc/pulse/client.conf"
+            environment += "PULSE_LATENCY_MSEC=60"
+            environment += "ALSA_CONFIG_PATH=/etc/asound.conf"
         }
         return ProotLaunch(
             shellPath = "/system/bin/sh",

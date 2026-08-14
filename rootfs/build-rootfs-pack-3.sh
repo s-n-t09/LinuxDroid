@@ -10,11 +10,11 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT_DIR="${OUT_DIR:-$ROOT/rootfs/release-pack-2}"
+OUT_DIR="${OUT_DIR:-$ROOT/rootfs/release-pack-3}"
 CACHE_DIR="${CACHE_DIR:-$ROOT/.rootfs-source-cache}"
-WORK_DIR="${WORK_DIR:-$ROOT/.rootfs-work-pack-2}"
+WORK_DIR="${WORK_DIR:-$ROOT/.rootfs-work-pack-3}"
 UPSTREAM_REPO="termux/proot-distro"
-PACK_VERSION="${PACK_VERSION:-ld-2026.08-r1}"
+PACK_VERSION="${PACK_VERSION:-ld-2026.08-r2}"
 RELEASES_JSON="$CACHE_DIR/proot-distro-releases.json"
 
 require() { command -v "$1" >/dev/null || { echo "Missing required command: $1" >&2; exit 1; }; }
@@ -30,9 +30,9 @@ if [[ ! -s "$RELEASES_JSON" || "${REFRESH_SOURCES:-0}" == 1 ]]; then
 fi
 
 cat > "$OUT_DIR/ROOTFS_RELEASE_NOTES.md" <<'EOF'
-# LinuxDroid RootFS Pack 2
+# LinuxDroid RootFS Pack 3
 
-This is the only supported RootFS pack for LinuxDroid 0.3.0 and later. It contains customized images for Ubuntu, Debian Trixie, Alpine Linux, Arch Linux, and Fedora Linux only.
+This is the only supported RootFS pack for LinuxDroid 0.4.0 and later. It contains customized images for Ubuntu, Debian Trixie, Alpine Linux, Arch Linux, and Fedora Linux only.
 
 Each image includes LinuxDroid's PulseAudio client configuration, an audio helper (`linuxdroid-audio`), an audible `paplay` test file, an explanatory MOTD, storage mountpoint directories, and current HTTPS package-mirror settings. The app's Desktop Setup wizard installs the native PulseAudio client and ALSA Pulse bridge when it installs a desktop. In a minimal image, run `linuxdroid-audio setup` once to install those client packages, then run `linuxdroid-audio test`.
 
@@ -40,7 +40,7 @@ Fedora is available for `arm64-v8a` only because the upstream Termux PRoot Distr
 EOF
 
 cat > "$OUT_DIR/ROOTFS_SOURCES.md" <<'EOF'
-# LinuxDroid RootFS Pack 2 Source Provenance
+# LinuxDroid RootFS Pack 3 Source Provenance
 
 | LinuxDroid asset | Android ABI | Upstream asset | Upstream release | Upstream SHA-256 |
 | --- | --- | --- | --- | --- |
@@ -103,8 +103,18 @@ EOF
 # LinuxDroid private audio bridge. The host service accepts loopback connections only.
 export PULSE_SERVER="${PULSE_SERVER:-tcp:127.0.0.1:4713}"
 export PULSE_COOKIE="${PULSE_COOKIE:-/tmp/linuxdroid-pulse.cookie}"
+export PULSE_CLIENTCONFIG="${PULSE_CLIENTCONFIG:-/etc/pulse/client.conf}"
+export PULSE_LATENCY_MSEC="${PULSE_LATENCY_MSEC:-60}"
+export ALSA_CONFIG_PATH="${ALSA_CONFIG_PATH:-/etc/asound.conf}"
 EOF
-  cat > "$stage/root/.asoundrc" <<'EOF'
+  cat > "$stage/etc/profile.d/linuxdroid-motd.sh" <<'EOF'
+# Print the LinuxDroid MOTD once per interactive login shell.
+if [ "${LINUXDROID_MOTD_ENABLED:-1}" = "1" ] && [ -n "${PS1:-}" ] && [ "${LINUXDROID_MOTD_SHOWN:-0}" != "1" ] && [ -r /etc/motd ]; then
+  cat /etc/motd
+  export LINUXDROID_MOTD_SHOWN=1
+fi
+EOF
+  cat > "$stage/etc/asound.conf" <<'EOF'
 pcm.!default {
   type pulse
   fallback "sysdefault"
@@ -114,6 +124,7 @@ ctl.!default {
   fallback "sysdefault"
 }
 EOF
+  cp "$stage/etc/asound.conf" "$stage/root/.asoundrc"
   cat > "$stage/usr/local/bin/linuxdroid-audio" <<'EOF'
 #!/bin/sh
 set -eu
@@ -141,10 +152,12 @@ test_audio() {
     echo "Installing the LinuxDroid PulseAudio client first…"
     setup
   fi
+  echo "PULSE_SERVER=$PULSE_SERVER"
   pactl info >/dev/null || {
-    echo "The LinuxDroid PulseAudio service is unavailable. Start the distribution from LinuxDroid, then retry." >&2
+    echo "The LinuxDroid PulseAudio service is unavailable. Stop and restart the distribution, then review Session logs for pulseaudio.log." >&2
     exit 1
   }
+  pactl list short sinks
   paplay /usr/share/linuxdroid/tone.wav
   echo "LinuxDroid audio test finished."
 }
@@ -162,8 +175,10 @@ EOF
 Welcome to $distro on LinuxDroid.
 
 Shared Android storage appears at /storage/emulated/0 when All files access is enabled in LinuxDroid.
-Audio uses LinuxDroid's private PulseAudio server. Run: linuxdroid-audio test
-For minimal images, the command installs guest audio client packages on its first run.
+Audio uses LinuxDroid's private PulseAudio server at tcp:127.0.0.1:4713.
+Run: linuxdroid-audio test
+For minimal images, the command installs guest PulseAudio and ALSA bridge packages on its first run.
+Use `pactl info` to inspect the client connection and `speaker-test -t sine` after setup.
 EOF
 }
 

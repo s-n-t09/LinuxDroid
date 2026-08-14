@@ -74,7 +74,15 @@ class LinuxSessionController(context: Context) : TerminalSessionClient {
             runtime = preparedRuntime
             nextTabNumber = 1
             sessionLog.begin(distro.title, rootfs, prootCommands.createInteractiveLaunch(distro, preparedRuntime, settings))
-            if (settings.pulseAudioEnabled) pulseAudio.start(preparedRuntime)
+            if (settings.pulseAudioEnabled) {
+                val pulseReady = pulseAudio.start(preparedRuntime)
+                sessionLog.recordRuntimeStatus(
+                    if (pulseReady) "PulseAudio is ready on tcp:127.0.0.1:4713."
+                    else "PulseAudio did not become ready; review pulseaudio.log from Session logs."
+                )
+            } else {
+                sessionLog.recordRuntimeStatus("PulseAudio is disabled in LinuxDroid settings.")
+            }
 
             val first = createTerminalLocked(distro, preparedRuntime, settings)
             _state.value = SessionState.RUNNING

@@ -15,10 +15,12 @@ import android.os.Environment
 import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
+import android.view.Menu
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -30,8 +32,10 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.materialswitch.MaterialSwitch
 import io.linuxdroid.app.data.BrowserChoice
 import io.linuxdroid.app.data.DesktopEnvironment
 import io.linuxdroid.app.data.InstalledDistro
@@ -68,9 +72,19 @@ class MainActivity : AppCompatActivity() {
     private val local by lazy { LocalRepository(this) }
     private val network = RootfsNetwork()
     private val releaseClient = RootfsReleaseClient()
+    private companion object {
+        const val PAGE_HOME = 1
+        const val PAGE_DISTRIBUTIONS = 2
+        const val PAGE_TOOLS = 3
+        const val PAGE_SETTINGS = 4
+    }
+
     private lateinit var installedContainer: LinearLayout
     private lateinit var status: TextView
     private lateinit var installButton: MaterialButton
+    private lateinit var pageContainer: FrameLayout
+    private lateinit var navigation: BottomNavigationView
+    private var selectedPage = PAGE_HOME
     private var releaseDistributions: List<RootfsDefinition> = emptyList()
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -89,45 +103,136 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildScreen(): View {
-        val content = LinearLayout(this).apply {
+        return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(20), dp(20), dp(32))
-        }
-
-        content.addView(buildHero(), linearParams(top = 0, bottom = 18))
-        content.addView(buildStatusCard(), linearParams(bottom = 16))
-
-        val commandTitle = sectionTitle("Command centre", "Your Linux environments, in one place")
-        content.addView(commandTitle, linearParams(bottom = 10))
-
-        val actionGrid = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        val primaryRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        installButton = actionButton("Install distro", ActionTone.PRIMARY) { showReleaseDistributions() }
-        primaryRow.addView(installButton, weightParams(1f, end = 8))
-        primaryRow.addView(actionButton("Refresh", ActionTone.INFO) { lifecycleScope.launch { loadReleaseSilently() } }, weightParams(1f, start = 8))
-        actionGrid.addView(primaryRow)
-
-        val toolsRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        toolsRow.addView(actionButton("VNC settings", ActionTone.VIOLET) { configureVnc() }, weightParams(1f, top = 10, end = 8))
-        toolsRow.addView(actionButton("Session", ActionTone.WARNING) { showSessionControls() }, weightParams(1f, top = 10, start = 8))
-        actionGrid.addView(toolsRow)
-        val diagnosticsRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        diagnosticsRow.addView(actionButton("Shared storage", ActionTone.SUCCESS) { configureSharedStorage() }, weightParams(1f, top = 10, end = 8))
-        diagnosticsRow.addView(actionButton("Session logs", ActionTone.INFO) { showSessionLog() }, weightParams(1f, top = 10, start = 8))
-        actionGrid.addView(diagnosticsRow)
-        content.addView(actionGrid, linearParams(bottom = 26))
-
-        content.addView(sectionTitle("Installed distributions", "Only one Linux session runs at a time"), linearParams(bottom = 10))
-        installedContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        content.addView(installedContainer)
-
-        return ScrollView(this).apply {
             setBackgroundColor(getColor(R.color.ld_background))
-            isFillViewport = true
-            addView(content, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(buildStatusCard(), linearParams(top = 12, bottom = 4).apply { setMargins(dp(16), dp(12), dp(16), dp(4)) })
+            pageContainer = FrameLayout(this@MainActivity)
+            addView(pageContainer, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+            navigation = BottomNavigationView(this@MainActivity).apply {
+                setBackgroundColor(getColor(R.color.ld_surface))
+                itemIconTintList = ColorStateList.valueOf(getColor(R.color.ld_action_violet))
+                itemTextColor = ColorStateList.valueOf(getColor(R.color.ld_text))
+                menu.add(Menu.NONE, PAGE_HOME, 0, "Home").setIcon(android.R.drawable.ic_menu_view)
+                menu.add(Menu.NONE, PAGE_DISTRIBUTIONS, 1, "Distros").setIcon(android.R.drawable.ic_menu_agenda)
+                menu.add(Menu.NONE, PAGE_TOOLS, 2, "Tools").setIcon(android.R.drawable.ic_menu_manage)
+                menu.add(Menu.NONE, PAGE_SETTINGS, 3, "Settings").setIcon(android.R.drawable.ic_menu_preferences)
+                setOnItemSelectedListener { item ->
+                    showPage(item.itemId)
+                    true
+                }
+            }
+            addView(navigation, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            showPage(PAGE_HOME)
+            navigation.selectedItemId = PAGE_HOME
         }
+    }
+
+    private fun showPage(page: Int) {
+        selectedPage = page
+        pageContainer.removeAllViews()
+        pageContainer.addView(
+            when (page) {
+                PAGE_DISTRIBUTIONS -> buildDistributionsPage()
+                PAGE_TOOLS -> buildToolsPage()
+                PAGE_SETTINGS -> buildSettingsPage()
+                else -> buildHomePage()
+            },
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        )
+    }
+
+    private fun scrollPage(content: LinearLayout): ScrollView = ScrollView(this).apply {
+        isFillViewport = true
+        addView(content, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+    }
+
+    private fun pageContent(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(20), dp(16), dp(20), dp(28))
+    }
+
+    private fun buildHomePage(): View = scrollPage(pageContent().apply {
+        addView(buildHero(), linearParams(bottom = 18))
+        addView(sectionTitle("Linux workspace", "Run one distribution safely and keep its session visible"), linearParams(bottom = 10))
+        val row = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
+        row.addView(actionButton("Browse distros", ActionTone.PRIMARY) { navigation.selectedItemId = PAGE_DISTRIBUTIONS }, weightParams(1f, end = 8))
+        row.addView(actionButton("Session", ActionTone.WARNING) { showSessionControls() }, weightParams(1f, start = 8))
+        addView(row, linearParams(bottom = 12))
+        addView(infoCard("Audio and storage", "PulseAudio runs privately on 127.0.0.1:4713. Configure audio, shared storage, VNC, and diagnostics in Tools and Settings."))
+    })
+
+    private fun buildDistributionsPage(): View = scrollPage(pageContent().apply {
+        addView(sectionTitle("Distributions", "Install, launch, configure, or remove Linux environments"), linearParams(bottom = 12))
+        val row = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
+        installButton = actionButton("Install distribution", ActionTone.PRIMARY) { showReleaseDistributions() }.apply { isEnabled = releaseDistributions.isNotEmpty() }
+        row.addView(installButton, weightParams(1f, end = 8))
+        row.addView(actionButton("Refresh catalog", ActionTone.INFO) { lifecycleScope.launch { loadReleaseSilently() } }, weightParams(1f, start = 8))
+        addView(row, linearParams(bottom = 22))
+        addView(sectionTitle("Installed distributions", "Only one PRoot distribution can run at once"), linearParams(bottom = 10))
+        installedContainer = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+        addView(installedContainer)
+        refreshInstalled()
+    })
+
+    private fun buildToolsPage(): View = scrollPage(pageContent().apply {
+        addView(sectionTitle("Tools", "Connection, diagnostics, storage, and session controls"), linearParams(bottom = 12))
+        addView(actionButton("VNC connection and controls", ActionTone.VIOLET) { configureVnc() }, linearParams(bottom = 10))
+        addView(actionButton("Shared storage access", ActionTone.SUCCESS) { configureSharedStorage() }, linearParams(bottom = 10))
+        addView(actionButton("Linux session controls", ActionTone.WARNING) { showSessionControls() }, linearParams(bottom = 10))
+        addView(actionButton("Session diagnostics", ActionTone.INFO) { showSessionLog() }, linearParams(bottom = 16))
+        addView(infoCard("Audio diagnostics", "Start a distribution, then run linuxdroid-audio test in its terminal. Session diagnostics records whether the PulseAudio TCP service became ready."))
+    })
+
+    private fun buildSettingsPage(): View = scrollPage(pageContent().apply {
+        addView(sectionTitle("LinuxDroid settings", "Personalize the runtime defaults used for new and restarted sessions"), linearParams(bottom = 14))
+        lifecycleScope.launch {
+            val current = local.settings()
+            addView(settingSwitch("Enable PulseAudio", "Start the private Android audio service for PRoot sessions", current.pulseAudioEnabled) { enabled ->
+                lifecycleScope.launch { local.saveSettings(local.settings().copy(pulseAudioEnabled = enabled)); status.text = "Audio setting saved. Restart the distribution to apply it." }
+            }, linearParams(bottom = 10))
+            addView(settingSwitch("Show LinuxDroid MOTD", "Display /etc/motd automatically in each new interactive shell", current.showMotdOnStart) { enabled ->
+                lifecycleScope.launch { local.saveSettings(local.settings().copy(showMotdOnStart = enabled)); status.text = "MOTD setting saved. Open a new terminal session to apply it." }
+            }, linearParams(bottom = 10))
+            addView(settingSwitch("Keep VNC screen awake", "Prevent screen sleep while the built-in VNC viewer is connected", current.vnc.keepScreenAwake) { enabled ->
+                lifecycleScope.launch { val settings = local.settings(); local.saveSettings(settings.copy(vnc = settings.vnc.copy(keepScreenAwake = enabled))); status.text = "VNC setting saved." }
+            }, linearParams(bottom = 10))
+        }
+        addView(actionButton("Configure VNC", ActionTone.VIOLET) { configureVnc() }, linearParams(top = 4, bottom = 10))
+        addView(actionButton("Configure shared storage", ActionTone.SUCCESS) { configureSharedStorage() }, linearParams(bottom = 10))
+        addView(actionButton("Open user guide", ActionTone.INFO) { showUserGuide() }, linearParams(bottom = 16))
+        addView(infoCard("Privacy", "LinuxDroid uses a local PRoot runtime. Shared storage remains unavailable until you explicitly grant Android All files access."))
+    })
+
+    private fun infoCard(title: String, message: String): View = MaterialCardView(this).apply {
+        radius = dp(20).toFloat(); cardElevation = 0f
+        setCardBackgroundColor(getColor(R.color.ld_surface_alt)); strokeColor = getColor(R.color.ld_outline); strokeWidth = dp(1)
+        addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(15), dp(16), dp(15))
+            addView(TextView(this@MainActivity).apply { text = title; textSize = 16f; typeface = Typeface.DEFAULT_BOLD; setTextColor(getColor(R.color.ld_text)) })
+            addView(TextView(this@MainActivity).apply { text = message; textSize = 13f; setPadding(0, dp(5), 0, 0); setTextColor(getColor(R.color.ld_muted)) })
+        })
+    }
+
+    private fun settingSwitch(title: String, detail: String, checked: Boolean, onChanged: (Boolean) -> Unit): View = MaterialCardView(this).apply {
+        radius = dp(18).toFloat(); cardElevation = 0f; setCardBackgroundColor(getColor(R.color.ld_surface)); strokeColor = getColor(R.color.ld_outline); strokeWidth = dp(1)
+        addView(LinearLayout(this@MainActivity).apply {
+            gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(12), dp(10), dp(12))
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(TextView(this@MainActivity).apply { text = title; textSize = 15f; typeface = Typeface.DEFAULT_BOLD; setTextColor(getColor(R.color.ld_text)) })
+                addView(TextView(this@MainActivity).apply { text = detail; textSize = 12f; setPadding(0, dp(3), 0, 0); setTextColor(getColor(R.color.ld_muted)) })
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(MaterialSwitch(this@MainActivity).apply { isChecked = checked; setOnCheckedChangeListener { _, enabled -> onChanged(enabled) } })
+        })
+    }
+
+    private fun showUserGuide() {
+        AlertDialog.Builder(this)
+            .setTitle("LinuxDroid guide")
+            .setMessage("1. Install a distribution from Distros.\n\n2. Start it, then open Terminal.\n\n3. For sound, run linuxdroid-audio test. If it reports a service error, stop and start the distribution and open Session diagnostics.\n\n4. For files, enable Shared storage and grant All files access; restart the distribution and use /storage/emulated/0.\n\n5. For desktop use, run Desktop setup from a distribution card, then start its VNC script and open the VNC viewer.\n\nIf Android terminates a long session (Signal 9), keep the foreground notification visible and exclude LinuxDroid from battery optimization.")
+            .setPositiveButton("Close", null)
+            .show()
     }
 
     private fun buildHero(): View {
@@ -186,13 +291,13 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), 0, 0, 0)
                 addView(TextView(this@MainActivity).apply {
-                    text = "RootFS release status"
+                    text = "Runtime and RootFS status"
                     textSize = 12f
                     typeface = Typeface.DEFAULT_BOLD
                     setTextColor(getColor(R.color.ld_muted))
                 })
                 status = TextView(this@MainActivity).apply {
-                    text = "Loading LinuxDroid RootFS release…"
+                    text = "Checking RootFS Pack 3 and private PulseAudio service…"
                     textSize = 15f
                     setPadding(0, dp(2), 0, 0)
                     setTextColor(getColor(R.color.ld_text))
@@ -437,8 +542,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshInstalled() {
+        if (!::installedContainer.isInitialized) return
         lifecycleScope.launch {
             val installed = local.listInstalled()
+            if (!::installedContainer.isInitialized) return@launch
             installedContainer.removeAllViews()
             if (installed.isEmpty()) {
                 installedContainer.addView(emptyStateCard())
@@ -622,12 +729,12 @@ class MainActivity : AppCompatActivity() {
         runCatching { releaseClient.fetchDistributions() }
             .onSuccess { loaded ->
                 releaseDistributions = loaded
-                installButton.isEnabled = loaded.isNotEmpty()
-                status.text = "Release online · ${loaded.size} distribution(s) available."
+                if (::installButton.isInitialized) installButton.isEnabled = loaded.isNotEmpty()
+                status.text = "RootFS Pack 3 online · ${loaded.size} distribution(s) available."
             }
             .onFailure {
-                installButton.isEnabled = false
-                status.text = "RootFS release error: ${it.message}"
+                if (::installButton.isInitialized) installButton.isEnabled = false
+                status.text = "RootFS Pack 3 error: ${it.message}"
             }
     }
 

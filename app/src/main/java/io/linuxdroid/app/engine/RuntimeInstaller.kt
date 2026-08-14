@@ -32,10 +32,12 @@ class RuntimeInstaller(context: Context, private val local: LocalRepository) {
     suspend fun ensureInstalled(): RuntimePaths = withContext(Dispatchers.IO) {
         val abi = supportedAbi()
         val target = File(local.runtimeDirectory(), abi).apply { mkdirs() }
-        val marker = File(target, ".runtime-v1")
+        val marker = File(target, ".runtime-v2")
         if (!marker.exists()) {
+            // Overlay the current assets even when an earlier LinuxDroid runtime
+            // is present, so existing installations receive corrected PulseAudio modules.
             copyAssetTree("runtime/$abi", target)
-            marker.writeText("LinuxDroid runtime v1\n")
+            marker.writeText("LinuxDroid runtime v2\n")
         }
         val packagedProot = File(appContext.applicationInfo.nativeLibraryDir, "libproot.so")
         check(packagedProot.isFile) {
@@ -56,9 +58,13 @@ class RuntimeInstaller(context: Context, private val local: LocalRepository) {
             prootLoader = packagedLoader,
             pulseBinary = pulse,
             pulseLibraryDirectory = File(target, "pulse/lib").takeIf { it.isDirectory },
-            pulseModuleDirectory = File(target, "pulse/lib").takeIf { it.isDirectory }
-                ?.walkTopDown()
-                ?.firstOrNull { candidate -> candidate.isDirectory && candidate.name == "modules" && candidate.parentFile?.name?.startsWith("pulse-") == true }
+            // Termux packages modules at pulse/lib/pulseaudio/modules. The old
+            // predicate looked for a parent beginning with "pulse-", so no
+            // module directory was ever passed to the daemon on Android.
+            pulseModuleDirectory = File(target, "pulse/lib/pulseaudio/modules").takeIf { it.isDirectory }
+                ?: File(target, "pulse/lib").takeIf { it.isDirectory }
+                    ?.walkTopDown()
+                    ?.firstOrNull { candidate -> candidate.isDirectory && candidate.name == "modules" }
                 ?: File(target, "pulse/modules").takeIf { it.isDirectory }
         )
     }

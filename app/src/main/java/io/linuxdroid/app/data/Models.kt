@@ -79,6 +79,7 @@ data class AppSettings(
     val enableAllFilesBinding: Boolean = false,
     val keepScreenAwake: Boolean = true,
     val pulseAudioEnabled: Boolean = true,
+    val showMotdOnStart: Boolean = true,
     val vnc: VncProfile = VncProfile()
 )
 

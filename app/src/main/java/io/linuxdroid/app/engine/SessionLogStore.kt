@@ -37,6 +37,11 @@ class SessionLogStore(private val local: LocalRepository) {
     }
 
     @Synchronized
+    fun recordRuntimeStatus(message: String) {
+        append("Runtime status at ${timestamp()}: $message\n")
+    }
+
+    @Synchronized
     fun recordExit(session: TerminalSession, exitCode: Int) {
         val transcript = runCatching {
             session.emulator.screen.transcriptText
