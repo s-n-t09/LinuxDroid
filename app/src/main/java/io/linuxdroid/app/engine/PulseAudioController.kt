@@ -48,7 +48,9 @@ class PulseAudioController(private val local: LocalRepository) {
             "--exit-idle-time=-1",
             "--log-target=stderr",
             "--log-level=info",
-            "--config-file=${configuration.absolutePath}"
+            // PulseAudio runs module commands from --file; --config-file is not
+            // a supported daemon CLI option in the Termux build shipped here.
+            "--file=${configuration.absolutePath}"
         )
         val builder = ProcessBuilder(command)
             .directory(configDirectory)
@@ -62,7 +64,7 @@ class PulseAudioController(private val local: LocalRepository) {
             this["PULSE_DLPATH"] = moduleDirectory.absolutePath
             runtime.pulseLibraryDirectory?.let { this["LD_LIBRARY_PATH"] = it.absolutePath }
         }
-        logFile.appendText("Command: ${command.joinToString(" ")}\nNative library directory: ${runtime.pulseLibraryDirectory?.absolutePath}\nModules: ${moduleDirectory.absolutePath}\n")
+        logFile.appendText("Command: ${command.joinToString(" ")}\nConfiguration mode: --file module script\nNative library directory: ${runtime.pulseLibraryDirectory?.absolutePath}\nModules: ${moduleDirectory.absolutePath}\n")
         process = runCatching { builder.start() }.onFailure { error ->
             logFile.appendText("Process start failed: ${error.message}\n")
         }.getOrNull()

@@ -242,6 +242,7 @@ class TerminalActivity : AppCompatActivity(), TerminalViewClient {
         }
         fun escape(label: String, data: String) = keyButton(label) { activeSession?.write(data) }
 
+        keyButton("BACK") { showLeaveTerminalDialog() }
         modifier("CTRL") { control = it }
         modifier("ALT") { alt = it }
         modifier("SHIFT") { shift = it }
