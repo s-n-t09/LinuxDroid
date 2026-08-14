@@ -14,6 +14,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
 import android.text.InputType
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.Menu
 import android.view.View
@@ -75,8 +76,7 @@ class MainActivity : AppCompatActivity() {
     private companion object {
         const val PAGE_HOME = 1
         const val PAGE_DISTRIBUTIONS = 2
-        const val PAGE_TOOLS = 3
-        const val PAGE_SETTINGS = 4
+        const val PAGE_SETTINGS = 3
     }
 
     private lateinit var installedContainer: LinearLayout
@@ -115,8 +115,7 @@ class MainActivity : AppCompatActivity() {
                 itemTextColor = ColorStateList.valueOf(getColor(R.color.ld_text))
                 menu.add(Menu.NONE, PAGE_HOME, 0, "Home").setIcon(android.R.drawable.ic_menu_view)
                 menu.add(Menu.NONE, PAGE_DISTRIBUTIONS, 1, "Distros").setIcon(android.R.drawable.ic_menu_agenda)
-                menu.add(Menu.NONE, PAGE_TOOLS, 2, "Tools").setIcon(android.R.drawable.ic_menu_manage)
-                menu.add(Menu.NONE, PAGE_SETTINGS, 3, "Settings").setIcon(android.R.drawable.ic_menu_preferences)
+                menu.add(Menu.NONE, PAGE_SETTINGS, 2, "Settings").setIcon(android.R.drawable.ic_menu_preferences)
                 setOnItemSelectedListener { item ->
                     showPage(item.itemId)
                     true
@@ -134,7 +133,6 @@ class MainActivity : AppCompatActivity() {
         pageContainer.addView(
             when (page) {
                 PAGE_DISTRIBUTIONS -> buildDistributionsPage()
-                PAGE_TOOLS -> buildToolsPage()
                 PAGE_SETTINGS -> buildSettingsPage()
                 else -> buildHomePage()
             },
@@ -154,34 +152,22 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildHomePage(): View = scrollPage(pageContent().apply {
         addView(buildHero(), linearParams(bottom = 18))
-        addView(sectionTitle("Linux workspace", "Run one distribution safely and keep its session visible"), linearParams(bottom = 10))
-        val row = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
-        row.addView(actionButton("Browse distros", ActionTone.PRIMARY) { navigation.selectedItemId = PAGE_DISTRIBUTIONS }, weightParams(1f, end = 8))
-        row.addView(actionButton("Session", ActionTone.WARNING) { showSessionControls() }, weightParams(1f, start = 8))
-        addView(row, linearParams(bottom = 12))
-        addView(infoCard("Audio and storage", "PulseAudio runs privately on 127.0.0.1:4713. Configure audio, shared storage, VNC, and diagnostics in Tools and Settings."))
+        addView(sectionTitle("Linux workspace", "One clean place for your running Linux environment"), linearParams(bottom = 10))
+        addView(actionButton("Browse distributions", ActionTone.PRIMARY) { navigation.selectedItemId = PAGE_DISTRIBUTIONS }, linearParams(bottom = 10))
+        addView(actionButton("Session controls", ActionTone.WARNING) { showSessionControls() }, linearParams(bottom = 10))
+        addView(actionButton("Tools and diagnostics", ActionTone.INFO) { navigation.selectedItemId = PAGE_SETTINGS }, linearParams(bottom = 16))
+        addView(infoCard("Audio and storage", "PulseAudio uses a private 127.0.0.1:4713 service. VNC, shared storage, audio diagnostics, and LinuxDroid preferences are grouped in Settings."))
     })
 
     private fun buildDistributionsPage(): View = scrollPage(pageContent().apply {
         addView(sectionTitle("Distributions", "Install, launch, configure, or remove Linux environments"), linearParams(bottom = 12))
-        val row = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
         installButton = actionButton("Install distribution", ActionTone.PRIMARY) { showReleaseDistributions() }.apply { isEnabled = releaseDistributions.isNotEmpty() }
-        row.addView(installButton, weightParams(1f, end = 8))
-        row.addView(actionButton("Refresh catalog", ActionTone.INFO) { lifecycleScope.launch { loadReleaseSilently() } }, weightParams(1f, start = 8))
-        addView(row, linearParams(bottom = 22))
+        addView(installButton, linearParams(bottom = 10))
+        addView(actionButton("Refresh RootFS catalog", ActionTone.INFO) { lifecycleScope.launch { loadReleaseSilently() } }, linearParams(bottom = 22))
         addView(sectionTitle("Installed distributions", "Only one PRoot distribution can run at once"), linearParams(bottom = 10))
         installedContainer = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
         addView(installedContainer)
         refreshInstalled()
-    })
-
-    private fun buildToolsPage(): View = scrollPage(pageContent().apply {
-        addView(sectionTitle("Tools", "Connection, diagnostics, storage, and session controls"), linearParams(bottom = 12))
-        addView(actionButton("VNC connection and controls", ActionTone.VIOLET) { configureVnc() }, linearParams(bottom = 10))
-        addView(actionButton("Shared storage access", ActionTone.SUCCESS) { configureSharedStorage() }, linearParams(bottom = 10))
-        addView(actionButton("Linux session controls", ActionTone.WARNING) { showSessionControls() }, linearParams(bottom = 10))
-        addView(actionButton("Session diagnostics", ActionTone.INFO) { showSessionLog() }, linearParams(bottom = 16))
-        addView(infoCard("Audio diagnostics", "Start a distribution, then run linuxdroid-audio test in its terminal. Session diagnostics records whether the PulseAudio TCP service became ready."))
     })
 
     private fun buildSettingsPage(): View = scrollPage(pageContent().apply {
@@ -198,9 +184,13 @@ class MainActivity : AppCompatActivity() {
                 lifecycleScope.launch { val settings = local.settings(); local.saveSettings(settings.copy(vnc = settings.vnc.copy(keepScreenAwake = enabled))); status.text = "VNC setting saved." }
             }, linearParams(bottom = 10))
         }
-        addView(actionButton("Configure VNC", ActionTone.VIOLET) { configureVnc() }, linearParams(top = 4, bottom = 10))
-        addView(actionButton("Configure shared storage", ActionTone.SUCCESS) { configureSharedStorage() }, linearParams(bottom = 10))
+        addView(sectionTitle("Tools and diagnostics", "Connection, storage, session controls, and troubleshooting"), linearParams(top = 8, bottom = 10))
+        addView(actionButton("Configure VNC", ActionTone.VIOLET) { configureVnc() }, linearParams(bottom = 10))
+        addView(actionButton("Shared storage access", ActionTone.SUCCESS) { configureSharedStorage() }, linearParams(bottom = 10))
+        addView(actionButton("Linux session controls", ActionTone.WARNING) { showSessionControls() }, linearParams(bottom = 10))
+        addView(actionButton("Session diagnostics", ActionTone.INFO) { showSessionLog() }, linearParams(bottom = 10))
         addView(actionButton("Open user guide", ActionTone.INFO) { showUserGuide() }, linearParams(bottom = 16))
+        addView(infoCard("Audio diagnostics", "Start a distribution, then run linuxdroid-audio test. Session diagnostics shows the final PulseAudio server log when the private TCP service cannot start."), linearParams(bottom = 10))
         addView(infoCard("Privacy", "LinuxDroid uses a local PRoot runtime. Shared storage remains unavailable until you explicitly grant Android All files access."))
     })
 
@@ -326,10 +316,17 @@ class MainActivity : AppCompatActivity() {
     private fun actionButton(label: String, tone: ActionTone, action: () -> Unit): MaterialButton = MaterialButton(this).apply {
         text = label
         isAllCaps = false
-        minHeight = dp(48)
+        minHeight = dp(52)
+        minimumHeight = dp(52)
+        minWidth = 0
+        minimumWidth = 0
         cornerRadius = dp(16)
         insetTop = 0
         insetBottom = 0
+        setPadding(dp(16), 0, dp(16), 0)
+        gravity = Gravity.CENTER
+        maxLines = 2
+        ellipsize = TextUtils.TruncateAt.END
         textSize = 14f
         typeface = Typeface.DEFAULT_BOLD
         backgroundTintList = ColorStateList.valueOf(getColor(tone.background))

@@ -47,7 +47,7 @@ field_of() {
 }
 
 prepare_pulse() {
-  local abi="$1" termux_arch index url target queue_file seen_file
+  local abi="$1" termux_arch index url target queue_file seen_file native_target
   case "$abi" in
     arm64-v8a) termux_arch="aarch64" ;;
     armeabi-v7a) termux_arch="arm" ;;
@@ -56,9 +56,10 @@ prepare_pulse() {
   url="https://packages.termux.dev/apt/termux-main/dists/stable/main/binary-$termux_arch/Packages.gz"
   index="$WORK/Packages-$termux_arch"
   target="$ASSETS/$abi/pulse"
+  native_target="$ROOT/app/src/main/jniLibs/$abi"
   queue_file="$WORK/pulse-queue-$termux_arch"
   seen_file="$WORK/pulse-seen-$termux_arch"
-  rm -rf "$target"; mkdir -p "$target"; : > "$queue_file"; : > "$seen_file"
+  rm -rf "$target"; mkdir -p "$target" "$native_target"; : > "$queue_file"; : > "$seen_file"
   curl --fail --location --retry 3 --proto '=https' --tlsv1.2 "$url" | gzip -dc > "$index"
   echo pulseaudio >> "$queue_file"
 
@@ -92,6 +93,25 @@ prepare_pulse() {
   [[ -x "$target/bin/pulseaudio" ]] || { echo "PulseAudio binary was not extracted for $abi" >&2; exit 1; }
   chmod 0755 "$target/bin/pulseaudio"
   find "$target/lib" -type f -name '*.so*' -exec chmod 0644 {} + 2>/dev/null || true
+
+  # Android app-data directories are mounted noexec on modern devices. PulseAudio
+  # must therefore live beside PRoot in the APK native-library directory, which
+  # Android extracts as executable when android:extractNativeLibs=true.
+  install -m 0755 "$target/bin/pulseaudio" "$native_target/liblinuxdroid_pulseaudio.so"
+  declare -A copied_native_names=()
+  while IFS= read -r library; do
+    name="$(basename "$library")"
+    if [[ -n "${copied_native_names[$name]:-}" && "${copied_native_names[$name]}" != "$library" ]]; then
+      echo "Duplicate PulseAudio native file name: $name" >&2
+      exit 1
+    fi
+    copied_native_names[$name]="$library"
+    install -m 0644 "$library" "$native_target/$name"
+  done < <(find "$target/lib" -type f -name '*.so*' -print | sort)
+
+  # The daemon and all required loader modules are now shipped through jniLibs;
+  # do not duplicate the full Termux runtime in noexec app assets.
+  rm -rf "$target"
 }
 
 for abi in arm64-v8a armeabi-v7a; do

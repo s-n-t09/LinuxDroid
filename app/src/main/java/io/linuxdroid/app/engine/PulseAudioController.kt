@@ -12,15 +12,16 @@ class PulseAudioController(private val local: LocalRepository) {
     private var process: Process? = null
 
     suspend fun start(runtime: RuntimeInstaller.RuntimePaths): Boolean = withContext(Dispatchers.IO) {
-        val binary = runtime.pulseBinary ?: return@withContext false
-        if (process?.isAlive == true && isListening()) return@withContext true
-        stop()
-
         val configDirectory = File(local.runtimeDirectory(), "pulse-config").apply { mkdirs() }
         val logFile = File(local.logsDirectory(), "pulseaudio.log").apply {
             parentFile?.mkdirs()
             writeText("LinuxDroid PulseAudio startup\n")
         }
+        val binary = runtime.pulseBinary ?: return@withContext logFile.appendText(
+            "Android did not extract liblinuxdroid_pulseaudio.so as an executable native library. Reinstall the current APK.\n"
+        ).let { false }
+        if (process?.isAlive == true && isListening()) return@withContext true
+        stop()
         val moduleDirectory = runtime.pulseModuleDirectory
             ?: return@withContext logFile.appendText("PulseAudio modules directory is missing.\n").let { false }
         val configuration = File(configDirectory, "default.pa")
@@ -61,7 +62,7 @@ class PulseAudioController(private val local: LocalRepository) {
             this["PULSE_DLPATH"] = moduleDirectory.absolutePath
             runtime.pulseLibraryDirectory?.let { this["LD_LIBRARY_PATH"] = it.absolutePath }
         }
-        logFile.appendText("Command: ${command.joinToString(" ")}\nModules: ${moduleDirectory.absolutePath}\n")
+        logFile.appendText("Command: ${command.joinToString(" ")}\nNative library directory: ${runtime.pulseLibraryDirectory?.absolutePath}\nModules: ${moduleDirectory.absolutePath}\n")
         process = runCatching { builder.start() }.onFailure { error ->
             logFile.appendText("Process start failed: ${error.message}\n")
         }.getOrNull()

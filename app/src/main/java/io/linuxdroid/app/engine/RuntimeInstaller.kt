@@ -32,12 +32,12 @@ class RuntimeInstaller(context: Context, private val local: LocalRepository) {
     suspend fun ensureInstalled(): RuntimePaths = withContext(Dispatchers.IO) {
         val abi = supportedAbi()
         val target = File(local.runtimeDirectory(), abi).apply { mkdirs() }
-        val marker = File(target, ".runtime-v2")
+        val marker = File(target, ".runtime-v3")
         if (!marker.exists()) {
             // Overlay the current assets even when an earlier LinuxDroid runtime
             // is present, so existing installations receive corrected PulseAudio modules.
             copyAssetTree("runtime/$abi", target)
-            marker.writeText("LinuxDroid runtime v2\n")
+            marker.writeText("LinuxDroid runtime v3\n")
         }
         val packagedProot = File(appContext.applicationInfo.nativeLibraryDir, "libproot.so")
         check(packagedProot.isFile) {
@@ -51,21 +51,23 @@ class RuntimeInstaller(context: Context, private val local: LocalRepository) {
         check(packagedLoader.isFile && packagedLoader.canExecute()) {
             "The matching PRoot loader was not extracted by Android. Reinstall the current LinuxDroid APK so libproot_loader.so is installed in the native library directory."
         }
-        val pulse = File(target, "pulse/bin/pulseaudio").takeIf { it.isFile }?.also { it.setExecutable(true, true) }
+        // Arbitrary files under filesDir are noexec on current Android builds.
+        // The PulseAudio daemon, libraries, and modules are packaged in jniLibs
+        // and extracted by Android beside PRoot into nativeLibraryDir instead.
+        val pulse = File(appContext.applicationInfo.nativeLibraryDir, "liblinuxdroid_pulseaudio.so")
+            .takeIf { it.isFile && it.canExecute() }
+        val nativeLibraryDirectory = File(appContext.applicationInfo.nativeLibraryDir)
         RuntimePaths(
             abi = abi,
             proot = proot,
             prootLoader = packagedLoader,
             pulseBinary = pulse,
-            pulseLibraryDirectory = File(target, "pulse/lib").takeIf { it.isDirectory },
-            // Termux packages modules at pulse/lib/pulseaudio/modules. The old
-            // predicate looked for a parent beginning with "pulse-", so no
-            // module directory was ever passed to the daemon on Android.
-            pulseModuleDirectory = File(target, "pulse/lib/pulseaudio/modules").takeIf { it.isDirectory }
-                ?: File(target, "pulse/lib").takeIf { it.isDirectory }
-                    ?.walkTopDown()
-                    ?.firstOrNull { candidate -> candidate.isDirectory && candidate.name == "modules" }
-                ?: File(target, "pulse/modules").takeIf { it.isDirectory }
+            pulseLibraryDirectory = nativeLibraryDirectory.takeIf { it.isDirectory },
+            pulseModuleDirectory = nativeLibraryDirectory.takeIf { directory ->
+                directory.listFiles().orEmpty().any { child ->
+                    child.name.startsWith("module-") && child.name.endsWith(".so")
+                }
+            }
         )
     }
 
