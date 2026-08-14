@@ -1,0 +1,76 @@
+name: Publish LinuxDroid Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Build and publish LinuxDroid 0.4.0
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android Platform 35
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Prepare PRoot and PulseAudio runtime assets
+        run: |
+          chmod +x scripts/prepare-runtime.sh gradlew
+          ./scripts/prepare-runtime.sh
+
+      - name: Build installable debug APKs
+        run: ./gradlew --no-daemon --stacktrace clean assembleDebug
+
+      - name: Build RootFS Pack 3
+        run: |
+          chmod +x rootfs/build-rootfs-pack-3.sh
+          rootfs/build-rootfs-pack-3.sh
+
+      - name: Publish RootFS Pack 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create rootfs-pack-3 \
+            rootfs/release-pack-3/linuxdroid-rootfs__*.tar.xz \
+            rootfs/release-pack-3/linuxdroid-rootfs__*.tar.xz.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "LinuxDroid RootFS Pack 3 — Audio and MOTD repair" \
+            --notes-file rootfs/release-pack-3/ROOTFS_RELEASE_NOTES.md
+
+      - name: Publish LinuxDroid 0.4.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.4.0 \
+            app/build/outputs/apk/debug/app-arm64-v8a-debug.apk#LinuxDroid-v0.4.0-arm64-v8a-debug.apk \
+            app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk#LinuxDroid-v0.4.0-armeabi-v7a-debug.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "LinuxDroid v0.4.0 — Audio, MOTD and navigation" \
+            --notes "LinuxDroid 0.4.0 repairs the embedded PulseAudio runtime, adds ALSA exports and MOTD display for new RootFS images, and reorganizes the app with bottom navigation, detailed tools, and LinuxDroid settings."
+
+      - name: Remove replaced releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete rootfs-pack-2 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release delete v0.3.1 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
