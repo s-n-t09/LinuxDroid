@@ -37,14 +37,20 @@ class ProotCommandFactory {
             "-b", "/dev",
             "-b", "/proc",
             "-b", "/sys",
-            "-b", "${shellQuote(root.absolutePath)}/tmp:/tmp",
-            "-w", "/root",
-            guestShell, "-l"
+            "-b", "${shellQuote(root.absolutePath)}/tmp:/tmp"
         )
         if (settings.enableAllFilesBinding && Environment.isExternalStorageManager()) {
             val shared = Environment.getExternalStorageDirectory()
-            if (shared.canRead()) command.addAll(listOf("-b", "${shellQuote(shared.absolutePath)}:/sdcard"))
+            if (shared.canRead()) {
+                File(root, "storage/emulated/0").mkdirs()
+                File(root, "sdcard").mkdirs()
+                command.addAll(listOf(
+                    "-b", "${shellQuote(shared.absolutePath)}:/storage/emulated/0",
+                    "-b", "${shellQuote(shared.absolutePath)}:/sdcard"
+                ))
+            }
         }
+        command.addAll(listOf("-w", "/root", guestShell, "-l"))
         val environment = mutableListOf(
             "HOME=/root",
             "TERM=xterm-256color",

@@ -41,7 +41,9 @@ import io.linuxdroid.app.data.RootfsInstaller
 import io.linuxdroid.app.data.RootfsNetwork
 import io.linuxdroid.app.data.RootfsReleaseClient
 import io.linuxdroid.app.data.SetupSelection
+import io.linuxdroid.app.data.VncInputMode
 import io.linuxdroid.app.data.VncProfile
+import io.linuxdroid.app.data.VncScalingMode
 import io.linuxdroid.app.domain.DesktopSetupBuilder
 import io.linuxdroid.app.engine.LinuxRuntime
 import io.linuxdroid.app.engine.RuntimeInstaller
@@ -238,7 +240,7 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putBoolean("asked_all_files", true).apply()
             AlertDialog.Builder(this)
                 .setTitle("Optional shared-storage access")
-                .setMessage("LinuxDroid can bind shared storage at /sdcard inside Linux only if you grant All files access. This is optional; without it the distribution remains isolated. You can change this later in the source/settings dialog.")
+                .setMessage("LinuxDroid can bind shared storage at /storage/emulated/0 inside Linux only if you grant All files access. A compatible /sdcard path is also provided. This is optional; without it the distribution remains isolated.")
                 .setNegativeButton("Keep isolated", null)
                 .setPositiveButton("Allow and open settings") { _, _ -> requestAllFilesAccess() }
                 .show()
@@ -256,21 +258,37 @@ class MainActivity : AppCompatActivity() {
             val current = local.settings()
             val profile = current.vnc
             fun field(value: String, hint: String, inputType: Int = InputType.TYPE_CLASS_TEXT) = EditText(this@MainActivity).apply {
-                setText(value); this.hint = hint; this.inputType = inputType
+                setText(value)
+                this.hint = hint
+                this.inputType = inputType
+            }
+            fun label(value: String) = TextView(this@MainActivity).apply {
+                text = value
+                setPadding(0, dp(12), 0, dp(2))
+            }
+            fun selector(items: List<String>, selected: Int) = Spinner(this@MainActivity).apply {
+                adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, items)
+                setSelection(selected)
             }
             val host = field(profile.host, "Host (normally 127.0.0.1)")
             val port = field(profile.port.toString(), "Port", InputType.TYPE_CLASS_NUMBER)
             val password = field(profile.password, "VNC password", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
-            val command = field(profile.desktopCommand, "Desktop command")
+            val inputMode = selector(listOf("Touchpad", "Direct touch"), if (profile.inputMode == VncInputMode.TOUCHPAD) 0 else 1)
+            val scaling = selector(listOf("Fit to screen", "One-to-one, pinch to zoom"), if (profile.scalingMode == VncScalingMode.FIT) 0 else 1)
             val readOnly = CheckBox(this@MainActivity).apply { text = "View only"; isChecked = profile.viewOnly }
-            val scale = CheckBox(this@MainActivity).apply { text = "Scale desktop to fit"; isChecked = profile.scaleToFit }
+            val controls = CheckBox(this@MainActivity).apply { text = "Show on-screen controls"; isChecked = profile.showOnScreenControls }
+            val keepAwake = CheckBox(this@MainActivity).apply { text = "Keep screen awake while connected"; isChecked = profile.keepScreenAwake }
             val form = LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.VERTICAL; setPadding(dp(24), 0, dp(24), 0)
-                addView(host); addView(port); addView(password); addView(command); addView(readOnly); addView(scale)
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(24), 0, dp(24), 0)
+                addView(host); addView(port); addView(password)
+                addView(label("Input mode")); addView(inputMode)
+                addView(label("Scaling")); addView(scaling)
+                addView(readOnly); addView(controls); addView(keepAwake)
             }
             AlertDialog.Builder(this@MainActivity)
                 .setTitle("Internal VNC connection")
-                .setMessage("For a desktop started by LinuxDroid, keep the host at 127.0.0.1. Never expose VNC to a public network without a secure tunnel.")
+                .setMessage("LinuxDroid starts the desktop itself. Set only the connection and viewer behavior here; localhost is recommended for built-in desktops.")
                 .setView(form)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Save") { _, _ ->
@@ -283,8 +301,10 @@ class MainActivity : AppCompatActivity() {
                             password = password.text.toString(),
                             colorDepth = profile.colorDepth,
                             viewOnly = readOnly.isChecked,
-                            scaleToFit = scale.isChecked,
-                            desktopCommand = command.text.toString().trim().ifBlank { "startxfce4" }
+                            inputMode = if (inputMode.selectedItemPosition == 0) VncInputMode.TOUCHPAD else VncInputMode.DIRECT_TOUCH,
+                            scalingMode = if (scaling.selectedItemPosition == 0) VncScalingMode.FIT else VncScalingMode.ONE_TO_ONE,
+                            showOnScreenControls = controls.isChecked,
+                            keepScreenAwake = keepAwake.isChecked
                         )
                         local.saveSettings(current.copy(vnc = updated))
                         status.text = "VNC settings saved."

@@ -56,14 +56,22 @@ enum class DesktopEnvironment { XFCE, LXDE, MATE, FLUXBOX }
 enum class BrowserChoice { FIREFOX, CHROMIUM, NONE }
 
 @Serializable
+enum class VncInputMode { DIRECT_TOUCH, TOUCHPAD }
+
+@Serializable
+enum class VncScalingMode { FIT, ONE_TO_ONE }
+
+@Serializable
 data class VncProfile(
     val host: String = "127.0.0.1",
     val port: Int = 5901,
     val password: String = "",
     val colorDepth: Int = 24,
     val viewOnly: Boolean = false,
-    val scaleToFit: Boolean = true,
-    val desktopCommand: String = "startxfce4"
+    val inputMode: VncInputMode = VncInputMode.TOUCHPAD,
+    val scalingMode: VncScalingMode = VncScalingMode.FIT,
+    val showOnScreenControls: Boolean = true,
+    val keepScreenAwake: Boolean = true
 )
 
 @Serializable

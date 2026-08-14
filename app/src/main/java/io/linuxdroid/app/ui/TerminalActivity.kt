@@ -14,8 +14,11 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.termux.terminal.TerminalSession
 import com.termux.view.TerminalView
@@ -35,10 +38,15 @@ class TerminalActivity : AppCompatActivity(), TerminalViewClient {
     private var shift = false
     private var fn = false
     private var textSize = 14
+    private var leaveDialogShowing = false
+    private val modifierButtons = mutableMapOf<String, Button>()
+    private val terminalBackCallback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() = showLeaveTerminalDialog()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
         controller = LinuxRuntime.controller(this)
         val firstSession = controller.session
         if (firstSession == null) {
@@ -73,6 +81,11 @@ class TerminalActivity : AppCompatActivity(), TerminalViewClient {
             buildExtraKeys(),
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         )
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            view.setPadding(0, 0, 0, insets.getInsets(WindowInsetsCompat.Type.ime()).bottom)
+            insets
+        }
+        onBackPressedDispatcher.addCallback(this, terminalBackCallback)
         setContentView(root)
 
         controller.onTerminalChanged = { changed ->
@@ -92,22 +105,25 @@ class TerminalActivity : AppCompatActivity(), TerminalViewClient {
         super.onDestroy()
     }
 
-    override fun onBackPressed() {
+    private fun showLeaveTerminalDialog() {
+        if (leaveDialogShowing) return
         if (!::terminalView.isInitialized || controller.sessions.isEmpty()) {
             finish()
             return
         }
+        leaveDialogShowing = true
         AlertDialog.Builder(this)
-            .setTitle("Leave terminal?")
-            .setMessage("Choose whether LinuxDroid should keep the current Linux sessions running in the background.")
-            .setPositiveButton("Stop all sessions") { _, _ ->
+            .setTitle("Exit terminal?")
+            .setMessage("Choose whether LinuxDroid should stop the active Linux sessions before leaving the terminal.")
+            .setPositiveButton("Exit and stop sessions") { _, _ ->
                 lifecycleScope.launch {
                     controller.stop()
                     finish()
                 }
             }
-            .setNeutralButton("Keep sessions running") { _, _ -> finish() }
+            .setNeutralButton("Exit without stopping sessions") { _, _ -> finish() }
             .setNegativeButton("Cancel", null)
+            .setOnDismissListener { leaveDialogShowing = false }
             .show()
     }
 
@@ -190,13 +206,13 @@ class TerminalActivity : AppCompatActivity(), TerminalViewClient {
         }
         fun modifier(label: String, set: (Boolean) -> Unit) {
             keyButton(label) {
-                val button = row.findViewWithTag<Button>(label)
-                button?.isSelected = !(button?.isSelected ?: false)
-                button?.alpha = if (button?.isSelected == true) 1f else .65f
-                set(button?.isSelected == true)
+                val button = modifierButtons[label] ?: return@keyButton
+                button.isSelected = !button.isSelected
+                button.alpha = if (button.isSelected) 1f else .65f
+                set(button.isSelected)
             }.apply {
-                tag = label
                 alpha = .65f
+                modifierButtons[label] = this
             }
         }
         fun escape(label: String, data: String) = keyButton(label) { activeSession?.write(data) }
@@ -293,8 +309,22 @@ class TerminalActivity : AppCompatActivity(), TerminalViewClient {
     override fun readShiftKey(): Boolean = shift
     override fun readFnKey(): Boolean = fn
     override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession): Boolean {
+        // Termux exposes Ctrl as a flag. Alt/Meta is represented on a terminal by an ESC prefix.
+        if (alt) session.write("\u001b")
         session.writeCodePoint(ctrlDown || control, codePoint)
+        if (control || alt || shift || fn) clearOneShotModifiers()
         return true
+    }
+
+    private fun clearOneShotModifiers() {
+        control = false
+        alt = false
+        shift = false
+        fn = false
+        modifierButtons.values.forEach { button ->
+            button.isSelected = false
+            button.alpha = .65f
+        }
     }
     override fun onEmulatorSet() = Unit
     override fun logError(tag: String, message: String) { Log.e(tag, message) }

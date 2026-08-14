@@ -9,21 +9,53 @@ import android.graphics.RectF
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
+import io.linuxdroid.app.data.VncInputMode
 import io.linuxdroid.app.data.VncProfile
+import io.linuxdroid.app.data.VncScalingMode
+import kotlin.math.abs
 
+/**
+ * Internal VNC canvas with the mobile interaction model expected from a desktop viewer:
+ * direct touch or touchpad input, pinch zoom, pan, button gestures, scrolling and hardware keys.
+ */
 class VncCanvasView(context: Context) : View(context), RfbClient.Listener {
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val heldModifiers = mutableSetOf<Int>()
+    private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            if (scalingMode == VncScalingMode.FIT) scalingMode = VncScalingMode.ONE_TO_ONE
+            userScale = (userScale * detector.scaleFactor).coerceIn(0.25f, 5f)
+            invalidate()
+            return true
+        }
+    })
+
     private var client: RfbClient? = null
     private var bitmap: Bitmap? = null
     private var desktopWidth = 1
     private var desktopHeight = 1
     private var connected = false
     private var viewOnly = false
+    private var inputMode = VncInputMode.TOUCHPAD
+    private var scalingMode = VncScalingMode.FIT
+    private var userScale = 1f
+    private var panX = 0f
+    private var panY = 0f
+    private var pointerX = 0
+    private var pointerY = 0
+    private var lastX = 0f
+    private var lastY = 0f
+    private var downTime = 0L
+    private var moved = false
+    private var twoFingerOriginY = 0f
+
     var onStatus: (String) -> Unit = {}
+    var onRemoteClipboard: (String) -> Unit = {}
 
     init {
         isFocusable = true
@@ -34,39 +66,156 @@ class VncCanvasView(context: Context) : View(context), RfbClient.Listener {
     fun connect(profile: VncProfile) {
         disconnect()
         viewOnly = profile.viewOnly
+        inputMode = profile.inputMode
+        scalingMode = profile.scalingMode
+        userScale = 1f
+        panX = 0f
+        panY = 0f
         onStatus("Connecting to ${profile.host}:${profile.port}…")
         client = RfbClient(profile, this).also { it.connect() }
     }
 
     fun disconnect() {
+        heldModifiers.forEach { client?.sendKey(it, false) }
+        heldModifiers.clear()
         client?.disconnect()
         client = null
         connected = false
     }
 
+    fun sendSpecial(keySym: Int) {
+        if (viewOnly) return
+        client?.sendKey(keySym, true)
+        client?.sendKey(keySym, false)
+    }
+
+    fun sendSpecialPointer(buttonMask: Int) {
+        if (viewOnly) return
+        click(buttonMask)
+    }
+
+    fun setModifier(keySym: Int, held: Boolean) {
+        if (viewOnly) return
+        if (held) heldModifiers += keySym else heldModifiers -= keySym
+        client?.sendKey(keySym, held)
+    }
+
+    fun toggleScalingMode() {
+        scalingMode = if (scalingMode == VncScalingMode.FIT) VncScalingMode.ONE_TO_ONE else VncScalingMode.FIT
+        if (scalingMode == VncScalingMode.FIT) {
+            userScale = 1f
+            panX = 0f
+            panY = 0f
+        }
+        onStatus(if (scalingMode == VncScalingMode.FIT) "VNC: fit to screen" else "VNC: one-to-one / pinch zoom")
+        invalidate()
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val image = bitmap ?: return
-        synchronized(image) {
-            val scale = minOf(width.toFloat() / desktopWidth, height.toFloat() / desktopHeight)
-            val drawWidth = desktopWidth * scale
-            val drawHeight = desktopHeight * scale
-            val left = (width - drawWidth) / 2f
-            val top = (height - drawHeight) / 2f
-            canvas.drawBitmap(image, null, RectF(left, top, left + drawWidth, top + drawHeight), paint)
-        }
+        val target = targetRect()
+        synchronized(image) { canvas.drawBitmap(image, null, target, paint) }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         requestFocus()
+        scaleDetector.onTouchEvent(event)
         if (!connected || viewOnly) return true
-        val coordinates = mapToDesktop(event.x, event.y)
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> client?.sendPointer(1, coordinates.first, coordinates.second)
-            MotionEvent.ACTION_MOVE -> client?.sendPointer(if (event.buttonState and MotionEvent.BUTTON_PRIMARY != 0) 1 else 0, coordinates.first, coordinates.second)
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> client?.sendPointer(0, coordinates.first, coordinates.second)
+        if (scaleDetector.isInProgress) return true
+
+        if (event.pointerCount >= 2) {
+            handleMultiTouch(event)
+            return true
+        }
+        when (inputMode) {
+            VncInputMode.DIRECT_TOUCH -> handleDirectTouch(event)
+            VncInputMode.TOUCHPAD -> handleTouchpad(event)
         }
         return true
+    }
+
+    private fun handleDirectTouch(event: MotionEvent) {
+        val coordinates = mapToDesktop(event.x, event.y)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downTime = event.eventTime
+                moved = false
+                client?.sendPointer(1, coordinates.first, coordinates.second)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                moved = moved || abs(event.x - lastX) > 4f || abs(event.y - lastY) > 4f
+                client?.sendPointer(1, coordinates.first, coordinates.second)
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> client?.sendPointer(0, coordinates.first, coordinates.second)
+        }
+        lastX = event.x
+        lastY = event.y
+    }
+
+    private fun handleTouchpad(event: MotionEvent) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                lastX = event.x
+                lastY = event.y
+                downTime = event.eventTime
+                moved = false
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val dx = event.x - lastX
+                val dy = event.y - lastY
+                moved = moved || abs(dx) > 2f || abs(dy) > 2f
+                pointerX = (pointerX + dx).toInt().coerceIn(0, desktopWidth - 1)
+                pointerY = (pointerY + dy).toInt().coerceIn(0, desktopHeight - 1)
+                client?.sendPointer(0, pointerX, pointerY)
+                lastX = event.x
+                lastY = event.y
+            }
+            MotionEvent.ACTION_UP -> {
+                if (!moved && event.eventTime - downTime < 300) click(1)
+            }
+        }
+    }
+
+    private fun handleMultiTouch(event: MotionEvent) {
+        val midpointY = (0 until event.pointerCount).map { event.getY(it) }.average().toFloat()
+        when (event.actionMasked) {
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                twoFingerOriginY = midpointY
+                lastX = event.getX(0)
+                lastY = event.getY(0)
+                downTime = event.eventTime
+                moved = false
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val deltaY = midpointY - twoFingerOriginY
+                if (abs(deltaY) > 28f) {
+                    scroll(if (deltaY > 0) 16 else 8)
+                    twoFingerOriginY = midpointY
+                    moved = true
+                }
+                if (!scaleDetector.isInProgress && scalingMode == VncScalingMode.ONE_TO_ONE) {
+                    panX += event.getX(0) - lastX
+                    panY += event.getY(0) - lastY
+                    lastX = event.getX(0)
+                    lastY = event.getY(0)
+                    invalidate()
+                }
+            }
+            MotionEvent.ACTION_POINTER_UP -> {
+                if (!moved && event.pointerCount == 2 && event.eventTime - downTime < 300) click(4)
+            }
+        }
+    }
+
+    private fun click(buttonMask: Int) {
+        client?.sendPointer(buttonMask, pointerX, pointerY)
+        client?.sendPointer(0, pointerX, pointerY)
+    }
+
+    private fun scroll(buttonMask: Int) {
+        client?.sendPointer(buttonMask, pointerX, pointerY)
+        client?.sendPointer(0, pointerX, pointerY)
     }
 
     override fun onCheckIsTextEditor(): Boolean = true
@@ -84,10 +233,7 @@ class VncCanvasView(context: Context) : View(context), RfbClient.Listener {
             }
 
             override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
-                repeat(beforeLength) {
-                    client?.sendKey(0xff08, true)
-                    client?.sendKey(0xff08, false)
-                }
+                repeat(beforeLength) { sendSpecial(0xff08) }
                 return true
             }
         }
@@ -105,17 +251,13 @@ class VncCanvasView(context: Context) : View(context), RfbClient.Listener {
         return super.onKeyUp(keyCode, event)
     }
 
-    fun sendSpecial(keySym: Int) {
-        if (viewOnly) return
-        client?.sendKey(keySym, true)
-        client?.sendKey(keySym, false)
-    }
-
     override fun onConnected(desktopName: String, width: Int, height: Int) {
         post {
             connected = true
             desktopWidth = width
             desktopHeight = height
+            pointerX = width / 2
+            pointerY = height / 2
             onStatus("Connected: $desktopName ($width×$height)")
             invalidate()
         }
@@ -126,7 +268,7 @@ class VncCanvasView(context: Context) : View(context), RfbClient.Listener {
         postInvalidateOnAnimation()
     }
 
-    override fun onClipboard(text: String) = Unit
+    override fun onClipboard(text: String) = onRemoteClipboard(text)
     override fun onBell() {
         performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
     }
@@ -138,12 +280,20 @@ class VncCanvasView(context: Context) : View(context), RfbClient.Listener {
         }
     }
 
+    private fun targetRect(): RectF {
+        val fitScale = minOf(width.toFloat() / desktopWidth, height.toFloat() / desktopHeight)
+        val scale = if (scalingMode == VncScalingMode.FIT) fitScale else userScale
+        val drawWidth = desktopWidth * scale
+        val drawHeight = desktopHeight * scale
+        val left = (width - drawWidth) / 2f + panX
+        val top = (height - drawHeight) / 2f + panY
+        return RectF(left, top, left + drawWidth, top + drawHeight)
+    }
+
     private fun mapToDesktop(x: Float, y: Float): Pair<Int, Int> {
-        val scale = minOf(width.toFloat() / desktopWidth, height.toFloat() / desktopHeight)
-        val left = (width - desktopWidth * scale) / 2f
-        val top = (height - desktopHeight * scale) / 2f
-        return (((x - left) / scale).toInt().coerceIn(0, desktopWidth - 1)) to
-            (((y - top) / scale).toInt().coerceIn(0, desktopHeight - 1))
+        val target = targetRect()
+        return (((x - target.left) * desktopWidth / target.width()).toInt().coerceIn(0, desktopWidth - 1)) to
+            (((y - target.top) * desktopHeight / target.height()).toInt().coerceIn(0, desktopHeight - 1))
     }
 
     private fun keySym(event: KeyEvent): Int? = when (event.keyCode) {
@@ -162,6 +312,14 @@ class VncCanvasView(context: Context) : View(context), RfbClient.Listener {
         KeyEvent.KEYCODE_F2 -> 0xffbf
         KeyEvent.KEYCODE_F3 -> 0xffc0
         KeyEvent.KEYCODE_F4 -> 0xffc1
+        KeyEvent.KEYCODE_F5 -> 0xffc2
+        KeyEvent.KEYCODE_F6 -> 0xffc3
+        KeyEvent.KEYCODE_F7 -> 0xffc4
+        KeyEvent.KEYCODE_F8 -> 0xffc5
+        KeyEvent.KEYCODE_F9 -> 0xffc6
+        KeyEvent.KEYCODE_F10 -> 0xffc7
+        KeyEvent.KEYCODE_F11 -> 0xffc8
+        KeyEvent.KEYCODE_F12 -> 0xffc9
         else -> event.unicodeChar.takeIf { it > 0 }
     }
 }

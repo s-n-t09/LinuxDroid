@@ -25,7 +25,7 @@ class RootfsReleaseClient {
     companion object {
         const val OWNER = "s-n-t09"
         const val REPOSITORY = "LinuxDroid"
-        const val ROOTFS_RELEASE_TAG = "rootfs-pack-1"
+        const val ROOTFS_RELEASE_TAG = "rootfs-pack-2"
         private const val API_VERSION = "2022-11-28"
         private val assetPattern = Regex(
             "^linuxdroid-rootfs__([a-z0-9][a-z0-9-]{0,62})__([a-z0-9][a-z0-9._-]{0,63})__(arm64-v8a|armeabi-v7a)\\.tar\\.xz$"
@@ -125,24 +125,11 @@ class RootfsReleaseClient {
     private data class DistroDescriptor(val title: String, val description: String, val homepage: String?)
 
     private val descriptors = mapOf(
-        "adelie" to DistroDescriptor("Adélie Linux", "Independent musl-based Linux distribution for advanced users.", "https://www.adelielinux.org/"),
-        "almalinux" to DistroDescriptor("AlmaLinux", "Enterprise Linux-compatible server-oriented distribution.", "https://almalinux.org/"),
-        "alpine" to DistroDescriptor("Alpine Linux", "Small, security-focused musl and BusyBox distribution.", "https://alpinelinux.org/"),
-        "archlinux" to DistroDescriptor("Arch Linux", "Minimal rolling-release distribution for experienced users.", "https://archlinux.org/"),
-        "artix" to DistroDescriptor("Artix Linux", "Arch-based distribution using init systems other than systemd.", "https://artixlinux.org/"),
-        "chimera" to DistroDescriptor("Chimera Linux", "Independent distribution using the FreeBSD userland and LLVM toolchain.", "https://chimera-linux.org/"),
-        "debian-trixie" to DistroDescriptor("Debian Testing", "Current Debian testing branch for users who need newer packages.", "https://www.debian.org/"),
-        "deepin" to DistroDescriptor("Deepin", "Desktop-focused Debian-family distribution.", "https://www.deepin.org/"),
-        "fedora" to DistroDescriptor("Fedora Linux", "Community-driven RPM distribution with current developer tooling.", "https://fedoraproject.org/"),
-        "manjaro" to DistroDescriptor("Manjaro", "Arch-based distribution with curated rolling packages.", "https://manjaro.org/"),
-        "opensuse" to DistroDescriptor("openSUSE", "RPM distribution with robust administration tooling.", "https://www.opensuse.org/"),
-        "oraclelinux" to DistroDescriptor("Oracle Linux", "Enterprise Linux-compatible RPM distribution.", "https://www.oracle.com/linux/"),
-        "pardus" to DistroDescriptor("Pardus", "Debian-based Linux distribution.", "https://www.pardus.org.tr/"),
-        "rocky" to DistroDescriptor("Rocky Linux", "Enterprise Linux-compatible community distribution.", "https://rockylinux.org/"),
-        "trisquel" to DistroDescriptor("Trisquel", "Ubuntu-derived distribution focused on free software.", "https://trisquel.info/"),
-        "ubuntu-plucky" to DistroDescriptor("Ubuntu 25.04", "Ubuntu Plucky Puffin release image.", "https://ubuntu.com/"),
-        "ubuntu-questing" to DistroDescriptor("Ubuntu 25.10", "Ubuntu Questing Quokka release image.", "https://ubuntu.com/"),
-        "void" to DistroDescriptor("Void Linux", "Independent rolling-release distribution using runit.", "https://voidlinux.org/")
+        "alpine" to DistroDescriptor("Alpine Linux", "Small, security-focused musl and BusyBox distribution configured for LinuxDroid.", "https://alpinelinux.org/"),
+        "archlinux" to DistroDescriptor("Arch Linux", "Rolling Arch Linux RootFS configured for LinuxDroid.", "https://archlinux.org/"),
+        "debian-trixie" to DistroDescriptor("Debian Trixie", "Debian Trixie stable RootFS configured for LinuxDroid.", "https://www.debian.org/"),
+        "fedora" to DistroDescriptor("Fedora Linux", "Fedora RootFS configured for LinuxDroid.", "https://fedoraproject.org/"),
+        "ubuntu" to DistroDescriptor("Ubuntu", "Ubuntu RootFS configured for LinuxDroid.", "https://ubuntu.com/")
     )
 }
 

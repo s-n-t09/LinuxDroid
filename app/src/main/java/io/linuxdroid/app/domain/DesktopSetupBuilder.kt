@@ -35,8 +35,9 @@ class DesktopSetupBuilder {
               esac
               case "${'$'}BROWSER" in FIREFOX) browser_pkgs="firefox-esr" ;; CHROMIUM) browser_pkgs="chromium" ;; *) browser_pkgs="" ;; esac
               media_pkgs=""; [ "${'$'}MEDIA" = yes ] && media_pkgs="mpv vlc ffmpeg imagemagick nano vim less file"
+              audio_pkgs="pulseaudio-utils libasound2-plugins"
               apt-get update
-              apt-get install -y ${'$'}desktop_pkgs tigervnc-standalone-server ${'$'}browser_pkgs ${'$'}media_pkgs
+              apt-get install -y ${'$'}desktop_pkgs tigervnc-standalone-server ${'$'}audio_pkgs ${'$'}browser_pkgs ${'$'}media_pkgs
             }
             install_pacman() {
               case "${'$'}DESKTOP" in
@@ -47,7 +48,8 @@ class DesktopSetupBuilder {
               esac
               case "${'$'}BROWSER" in FIREFOX) browser_pkgs="firefox" ;; CHROMIUM) browser_pkgs="chromium" ;; *) browser_pkgs="" ;; esac
               media_pkgs=""; [ "${'$'}MEDIA" = yes ] && media_pkgs="mpv vlc ffmpeg imagemagick nano vim less file"
-              pacman -Syu --noconfirm ${'$'}desktop_pkgs tigervnc ${'$'}browser_pkgs ${'$'}media_pkgs
+              audio_pkgs="pulseaudio alsa-plugins"
+              pacman -Syu --noconfirm ${'$'}desktop_pkgs tigervnc ${'$'}audio_pkgs ${'$'}browser_pkgs ${'$'}media_pkgs
             }
             install_apk() {
               case "${'$'}DESKTOP" in
@@ -58,7 +60,8 @@ class DesktopSetupBuilder {
               esac
               case "${'$'}BROWSER" in FIREFOX) browser_pkgs="firefox-esr" ;; CHROMIUM) browser_pkgs="chromium" ;; *) browser_pkgs="" ;; esac
               media_pkgs=""; [ "${'$'}MEDIA" = yes ] && media_pkgs="mpv vlc ffmpeg imagemagick nano vim less file"
-              apk add ${'$'}desktop_pkgs tigervnc ${'$'}browser_pkgs ${'$'}media_pkgs
+              audio_pkgs="pulseaudio-utils alsa-plugins-pulse"
+              apk add ${'$'}desktop_pkgs tigervnc ${'$'}audio_pkgs ${'$'}browser_pkgs ${'$'}media_pkgs
             }
             install_dnf() {
               case "${'$'}DESKTOP" in
@@ -69,7 +72,8 @@ class DesktopSetupBuilder {
               esac
               case "${'$'}BROWSER" in FIREFOX) browser_pkgs="firefox" ;; CHROMIUM) browser_pkgs="chromium" ;; *) browser_pkgs="" ;; esac
               media_pkgs=""; [ "${'$'}MEDIA" = yes ] && media_pkgs="mpv vlc ffmpeg ImageMagick nano vim-enhanced less file"
-              dnf install -y ${'$'}desktop_pkgs tigervnc-server ${'$'}browser_pkgs ${'$'}media_pkgs
+              audio_pkgs="pulseaudio-utils alsa-plugins-pulseaudio"
+              dnf install -y ${'$'}desktop_pkgs tigervnc-server ${'$'}audio_pkgs ${'$'}browser_pkgs ${'$'}media_pkgs
             }
             if command -v apt-get >/dev/null 2>&1; then install_apt
             elif command -v pacman >/dev/null 2>&1; then install_pacman
