@@ -101,8 +101,13 @@ prepare_pulse() {
   declare -A copied_native_names=()
   while IFS= read -r library; do
     name="$(basename "$library")"
-    if [[ -n "${copied_native_names[$name]:-}" && "${copied_native_names[$name]}" != "$library" ]]; then
-      echo "Duplicate PulseAudio native file name: $name" >&2
+    if [[ -n "${copied_native_names[$name]:-}" ]]; then
+      # Termux may expose a library through two in-tree links with the same
+      # basename. Keep a single native copy when both resolve to identical data.
+      if cmp -s "$native_target/$name" "$library"; then
+        continue
+      fi
+      echo "Conflicting PulseAudio native file name: $name" >&2
       exit 1
     fi
     copied_native_names[$name]="$library"
