@@ -114,7 +114,8 @@ class MainActivity : AppCompatActivity() {
         toolsRow.addView(actionButton("Session", ActionTone.WARNING) { showSessionControls() }, weightParams(1f, top = 10, start = 8))
         actionGrid.addView(toolsRow)
         val diagnosticsRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        diagnosticsRow.addView(actionButton("Session logs", ActionTone.INFO) { showSessionLog() }, weightParams(1f, top = 10))
+        diagnosticsRow.addView(actionButton("Shared storage", ActionTone.SUCCESS) { configureSharedStorage() }, weightParams(1f, top = 10, end = 8))
+        diagnosticsRow.addView(actionButton("Session logs", ActionTone.INFO) { showSessionLog() }, weightParams(1f, top = 10, start = 8))
         actionGrid.addView(diagnosticsRow)
         content.addView(actionGrid, linearParams(bottom = 26))
 
@@ -242,8 +243,21 @@ class MainActivity : AppCompatActivity() {
                 .setTitle("Optional shared-storage access")
                 .setMessage("LinuxDroid can bind shared storage at /storage/emulated/0 inside Linux only if you grant All files access. A compatible /sdcard path is also provided. This is optional; without it the distribution remains isolated.")
                 .setNegativeButton("Keep isolated", null)
-                .setPositiveButton("Allow and open settings") { _, _ -> requestAllFilesAccess() }
+                .setPositiveButton("Allow and open settings") { _, _ -> configureSharedStorage() }
                 .show()
+        }
+    }
+
+    private fun configureSharedStorage() {
+        lifecycleScope.launch {
+            val current = local.settings()
+            if (!current.enableAllFilesBinding) local.saveSettings(current.copy(enableAllFilesBinding = true))
+            if (Build.VERSION.SDK_INT >= 30 && !Environment.isExternalStorageManager()) {
+                status.text = "Enable All files access, then start the distribution to mount /storage/emulated/0."
+                requestAllFilesAccess()
+            } else {
+                status.text = "Shared storage is enabled. Start or restart the distribution to mount /storage/emulated/0."
+            }
         }
     }
 
