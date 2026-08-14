@@ -78,6 +78,11 @@ class PulseAudioController(private val local: LocalRepository) {
         false
     }
 
+    fun recentLog(): String = runCatching {
+        val log = File(local.logsDirectory(), "pulseaudio.log")
+        log.takeIf { it.isFile }?.readText()?.takeLast(8_000).orEmpty()
+    }.getOrDefault("")
+
     private fun isListening(): Boolean = runCatching {
         Socket().use { socket ->
             socket.connect(InetSocketAddress("127.0.0.1", 4713), 250)
