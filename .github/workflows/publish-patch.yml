@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   publish-patch:
-    name: Build and publish LinuxDroid 0.4.4
+    name: Build and publish LinuxDroid 0.4.5
     runs-on: ubuntu-24.04
     timeout-minutes: 30
 
@@ -39,19 +39,19 @@ jobs:
       - name: Build installable debug APKs
         run: ./gradlew --no-daemon --stacktrace clean assembleDebug
 
-      - name: Publish LinuxDroid 0.4.4
+      - name: Publish LinuxDroid 0.4.5
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.4.4 \
-            app/build/outputs/apk/debug/app-arm64-v8a-debug.apk#LinuxDroid-v0.4.4-arm64-v8a-debug.apk \
-            app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk#LinuxDroid-v0.4.4-armeabi-v7a-debug.apk \
+          gh release create v0.4.5 \
+            app/build/outputs/apk/debug/app-arm64-v8a-debug.apk#LinuxDroid-v0.4.5-arm64-v8a-debug.apk \
+            app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk#LinuxDroid-v0.4.5-armeabi-v7a-debug.apk \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "LinuxDroid v0.4.4 — Compatible PulseAudio startup and visible Back key" \
-            --notes "LinuxDroid 0.4.4 uses PulseAudio's supported --file startup script option instead of the unsupported --config-file option and adds a BACK key as the first terminal extra key."
+            --title "LinuxDroid v0.4.5 — PRoot, VNC, and session experience" \
+            --notes "LinuxDroid 0.4.5 sets a writable PROOT_TMP_DIR for the f2fs safety probe, migrates desktop setup to the current TigerVNC config path, improves Android insets, refreshes RootFS status automatically, opens Terminal after startup, and adds Stop and EXIT controls."
 
       - name: Remove replaced app release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release delete v0.4.3 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+        run: gh release delete v0.4.4 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true

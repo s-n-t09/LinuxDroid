@@ -23,6 +23,9 @@ class ProotCommandFactory {
         val guestShell = if (
             (distro.id.startsWith("debian") || distro.id.startsWith("ubuntu")) && File(root, "bin/bash").isFile
         ) "/bin/bash" else "/bin/sh"
+        // PRoot performs a safe f2fs kernel probe before launching the guest.
+        // Its default temporary location may be inaccessible on Android app storage.
+        val prootTemporaryDirectory = File(root, ".linuxdroid-proot-tmp").apply { mkdirs() }
         val command = mutableListOf(
             shellQuote(runtime.proot.absolutePath),
             "--link2symlink",
@@ -59,6 +62,7 @@ class ProotCommandFactory {
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "PS1=\\u@\\h:\\w\\# ",
             "LINUXDROID_MOTD_ENABLED=${if (settings.showMotdOnStart) "1" else "0"}",
+            "PROOT_TMP_DIR=${prootTemporaryDirectory.absolutePath}",
             "PROOT_LOADER=${runtime.prootLoader.absolutePath}"
         )
         if (settings.pulseAudioEnabled && runtime.pulseBinary != null) {

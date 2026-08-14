@@ -32,6 +32,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.button.MaterialButton
@@ -56,6 +59,7 @@ import io.linuxdroid.app.engine.SessionLogStore
 import io.linuxdroid.app.service.LinuxSessionService
 import io.linuxdroid.app.ui.TerminalActivity
 import io.linuxdroid.app.vnc.VncActivity
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
@@ -86,11 +90,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var navigation: BottomNavigationView
     private var selectedPage = PAGE_HOME
     private var releaseDistributions: List<RootfsDefinition> = emptyList()
+    private var statusRefreshJob: Job? = null
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContentView(buildScreen())
         requestFirstRunPermissions()
         refreshInstalled()
@@ -103,7 +109,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildScreen(): View {
-        return LinearLayout(this).apply {
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(getColor(R.color.ld_background))
             addView(buildStatusCard(), linearParams(top = 12, bottom = 4).apply { setMargins(dp(16), dp(12), dp(16), dp(4)) })
@@ -125,6 +131,15 @@ class MainActivity : AppCompatActivity() {
             showPage(PAGE_HOME)
             navigation.selectedItemId = PAGE_HOME
         }
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val safeArea = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            view.setPadding(0, safeArea.top, 0, safeArea.bottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(root)
+        return root
     }
 
     private fun showPage(page: Int) {
@@ -532,9 +547,9 @@ class MainActivity : AppCompatActivity() {
                 status.text = "Extracting ${definition.title}…"
                 RootfsInstaller(local).install(definition, abi, archive) { count -> runOnUiThread { status.text = "Extracting ${definition.title}: $count files" } }
             }.onSuccess { installed ->
-                status.text = "Installed ${installed.title}."
+                showTemporaryRootfsStatus("Installed ${installed.title}.")
                 refreshInstalled()
-            }.onFailure { error -> status.text = "Installation failed: ${error.message}" }
+            }.onFailure { error -> showTemporaryRootfsStatus("Installation failed: ${error.message}") }
         }
     }
 
@@ -617,7 +632,13 @@ class MainActivity : AppCompatActivity() {
                         setTextColor(getColor(R.color.ld_muted))
                     })
                     val actions = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.START }
-                    actions.addView(actionButton("Start", ActionTone.SUCCESS) { startSession(distro) }, wrapParams(top = 14, end = 8))
+                    val isRunning = LinuxRuntime.controller(this@MainActivity).activeDistro?.installId == distro.installId
+                    actions.addView(
+                        actionButton(if (isRunning) "Stop" else "Start", if (isRunning) ActionTone.DANGER else ActionTone.SUCCESS) {
+                            if (isRunning) stopSession(distro) else startSession(distro)
+                        },
+                        wrapParams(top = 14, end = 8)
+                    )
                     actions.addView(actionButton("Terminal", ActionTone.INFO) { startActivity(Intent(this@MainActivity, TerminalActivity::class.java)) }, wrapParams(top = 14, end = 8))
                     actions.addView(actionButton("VNC", ActionTone.VIOLET) { startActivity(Intent(this@MainActivity, VncActivity::class.java)) }, wrapParams(top = 14, end = 8))
                     actions.addView(actionButton("Setup", ActionTone.WARNING) { showSetup(distro) }, wrapParams(top = 14, end = 8))
@@ -632,13 +653,40 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startSession(distro: InstalledDistro) {
-        val active = LinuxRuntime.controller(this).activeDistro
+        val controller = LinuxRuntime.controller(this)
+        val active = controller.activeDistro
         if (active != null && active.installId != distro.installId) {
             status.text = "Stop ${active.title} before starting another distribution."
             return
         }
+        if (active?.installId == distro.installId) {
+            startActivity(Intent(this, TerminalActivity::class.java))
+            return
+        }
         LinuxSessionService.start(this, distro.installId)
         status.text = "Starting ${distro.title} in a foreground session…"
+        lifecycleScope.launch {
+            repeat(32) {
+                delay(250)
+                if (controller.activeDistro?.installId == distro.installId && controller.session != null) {
+                    status.text = "${distro.title} is running. Opening terminal…"
+                    refreshInstalled()
+                    startActivity(Intent(this@MainActivity, TerminalActivity::class.java))
+                    return@launch
+                }
+            }
+            status.text = "${distro.title} is still starting. Check the foreground notification or Session diagnostics."
+            refreshInstalled()
+        }
+    }
+
+    private fun stopSession(distro: InstalledDistro) {
+        LinuxSessionService.stop(this)
+        status.text = "Stopping ${distro.title}…"
+        lifecycleScope.launch {
+            delay(500)
+            refreshInstalled()
+        }
     }
 
     private fun showSessionControls() {
@@ -719,6 +767,15 @@ class MainActivity : AppCompatActivity() {
             }
             status.text = "Desktop setup was sent to ${distro.title}. Open Terminal to monitor installation, then run ~/start-linuxdroid-desktop and open VNC."
             refreshInstalled()
+        }
+    }
+
+    private fun showTemporaryRootfsStatus(message: String) {
+        statusRefreshJob?.cancel()
+        status.text = message
+        statusRefreshJob = lifecycleScope.launch {
+            delay(6_000)
+            loadReleaseSilently()
         }
     }
 

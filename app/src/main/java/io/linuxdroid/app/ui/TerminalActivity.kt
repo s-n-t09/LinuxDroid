@@ -20,6 +20,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.termux.terminal.TerminalSession
@@ -49,6 +50,7 @@ class TerminalActivity : AppCompatActivity(), TerminalViewClient {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
         controller = LinuxRuntime.controller(this)
         val firstSession = controller.session
@@ -85,9 +87,14 @@ class TerminalActivity : AppCompatActivity(), TerminalViewClient {
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         )
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
-            view.setPadding(0, 0, 0, insets.getInsets(WindowInsetsCompat.Type.ime()).bottom)
+            val safeArea = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            view.setPadding(0, safeArea.top, 0, maxOf(safeArea.bottom, ime.bottom))
             insets
         }
+        ViewCompat.requestApplyInsets(root)
         registerTerminalBackHandling()
         setContentView(root)
 
@@ -242,7 +249,7 @@ class TerminalActivity : AppCompatActivity(), TerminalViewClient {
         }
         fun escape(label: String, data: String) = keyButton(label) { activeSession?.write(data) }
 
-        keyButton("BACK") { showLeaveTerminalDialog() }
+        keyButton("EXIT") { showLeaveTerminalDialog() }
         modifier("CTRL") { control = it }
         modifier("ALT") { alt = it }
         modifier("SHIFT") { shift = it }

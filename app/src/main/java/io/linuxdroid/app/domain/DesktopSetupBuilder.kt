@@ -16,7 +16,7 @@ class DesktopSetupBuilder {
             DesktopEnvironment.FLUXBOX -> "fluxbox"
         }
         val passwordCommand = selection.createVncPassword?.takeIf { it.isNotBlank() }?.let { password ->
-            "printf %s ${shellQuote(password)} | vncpasswd -f > \"${'$'}HOME/.vnc/passwd\" && chmod 600 \"${'$'}HOME/.vnc/passwd\""
+            "printf %s ${shellQuote(password)} | vncpasswd -f > \"${'$'}HOME/.config/tigervnc/passwd\" && chmod 600 \"${'$'}HOME/.config/tigervnc/passwd\""
         } ?: "echo 'No VNC password was supplied. Set one with: vncpasswd'"
 
         return """
@@ -81,14 +81,16 @@ class DesktopSetupBuilder {
             elif command -v dnf >/dev/null 2>&1; then install_dnf
             else echo "Unsupported package manager. Install a VNC server and run ${desktopCommand}." >&2; exit 2
             fi
-            mkdir -p "${'$'}HOME/.vnc"
-            cat > "${'$'}HOME/.vnc/xstartup" <<'EOF'
+            # TigerVNC 1.15+ uses ~/.config/tigervnc; ~/.vnc is deprecated.
+            rm -rf "${'$'}HOME/.vnc"
+            mkdir -p "${'$'}HOME/.config/tigervnc"
+            cat > "${'$'}HOME/.config/tigervnc/xstartup" <<'EOF'
             #!/bin/sh
             unset SESSION_MANAGER
             unset DBUS_SESSION_BUS_ADDRESS
             ${desktopCommand}
             EOF
-            chmod 700 "${'$'}HOME/.vnc/xstartup"
+            chmod 700 "${'$'}HOME/.config/tigervnc/xstartup"
             ${passwordCommand}
             cat > "${'$'}HOME/start-linuxdroid-desktop" <<'EOF'
             #!/bin/sh
