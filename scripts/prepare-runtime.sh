@@ -106,8 +106,10 @@ prepare_pulse() {
       exit 1
     fi
     copied_native_names[$name]="$library"
+    # Install dereferences each Termux symlink, preserving both names such as
+    # libiconv.so and libiconv.so.2 as executable APK native-library files.
     install -m 0644 "$library" "$native_target/$name"
-  done < <(find "$target/lib" -type f -name '*.so*' -print | sort)
+  done < <(find "$target/lib" \( -type f -o -type l \) -name '*.so*' -print | sort)
 
   # The daemon and all required loader modules are now shipped through jniLibs;
   # do not duplicate the full Termux runtime in noexec app assets.

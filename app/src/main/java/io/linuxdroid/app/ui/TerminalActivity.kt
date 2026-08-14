@@ -8,6 +8,8 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.HorizontalScrollView
@@ -39,6 +41,7 @@ class TerminalActivity : AppCompatActivity(), TerminalViewClient {
     private var fn = false
     private var textSize = 14
     private var leaveDialogShowing = false
+    private var predictiveBackCallback: OnBackInvokedCallback? = null
     private val modifierButtons = mutableMapOf<String, Button>()
     private val terminalBackCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() = showLeaveTerminalDialog()
@@ -85,7 +88,7 @@ class TerminalActivity : AppCompatActivity(), TerminalViewClient {
             view.setPadding(0, 0, 0, insets.getInsets(WindowInsetsCompat.Type.ime()).bottom)
             insets
         }
-        onBackPressedDispatcher.addCallback(this, terminalBackCallback)
+        registerTerminalBackHandling()
         setContentView(root)
 
         controller.onTerminalChanged = { changed ->
@@ -101,8 +104,30 @@ class TerminalActivity : AppCompatActivity(), TerminalViewClient {
     }
 
     override fun onDestroy() {
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            predictiveBackCallback?.let { onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it) }
+        }
         if (::controller.isInitialized) controller.onTerminalChanged = null
         super.onDestroy()
+    }
+
+    private fun registerTerminalBackHandling() {
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            predictiveBackCallback = OnBackInvokedCallback { showLeaveTerminalDialog() }.also { callback ->
+                onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                    callback
+                )
+            }
+        } else {
+            onBackPressedDispatcher.addCallback(this, terminalBackCallback)
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        // Fallback for devices or navigation modes that still dispatch legacy Back.
+        showLeaveTerminalDialog()
     }
 
     private fun showLeaveTerminalDialog() {
