@@ -41,8 +41,8 @@ jobs:
           chmod +x scripts/prepare-runtime.sh gradlew
           ./scripts/prepare-runtime.sh
 
-      - name: Build APK and Android App Bundle
-        run: ./gradlew --no-daemon --stacktrace clean assembleRelease bundleRelease
+      - name: Build debug and release Android artifacts
+        run: ./gradlew --no-daemon --stacktrace clean assembleDebug assembleRelease bundleRelease
 
       - name: Upload APK and AAB artifacts
         uses: actions/upload-artifact@v4
@@ -50,5 +50,6 @@ jobs:
           name: LinuxDroid-android-artifacts
           if-no-files-found: error
           path: |
+            app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/release/*.apk
             app/build/outputs/bundle/release/*.aab

@@ -1,0 +1,33 @@
+name: Build LinuxDroid RootFS Pack
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-rootfs:
+    name: Customized ARM RootFS pack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build RootFS Pack 3
+        run: |
+          chmod +x rootfs/build-rootfs-pack-3.sh
+          rootfs/build-rootfs-pack-3.sh
+
+      - name: Upload customized RootFS assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: LinuxDroid-rootfs-pack-3
+          if-no-files-found: error
+          path: |
+            rootfs/release-pack-3/linuxdroid-rootfs__*.tar.xz
+            rootfs/release-pack-3/linuxdroid-rootfs__*.tar.xz.sha256
+            rootfs/release-pack-3/ROOTFS_RELEASE_NOTES.md
+            rootfs/release-pack-3/ROOTFS_SOURCES.md
