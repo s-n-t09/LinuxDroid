@@ -62,6 +62,9 @@ prepare_pulse() {
   rm -rf "$target"; mkdir -p "$target" "$native_target"; : > "$queue_file"; : > "$seen_file"
   curl --fail --location --retry 3 --proto '=https' --tlsv1.2 "$url" | gzip -dc > "$index"
   echo pulseaudio >> "$queue_file"
+  # libpulsecommon is linked against libiconv, but the current Termux package
+  # metadata does not expose it as a direct dependency of pulseaudio.
+  echo libiconv >> "$queue_file"
 
   while IFS= read -r package; do
     [[ -n "$package" ]] || continue
