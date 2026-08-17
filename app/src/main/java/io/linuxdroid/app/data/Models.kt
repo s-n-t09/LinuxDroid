@@ -71,6 +71,8 @@ data class VncProfile(
     val inputMode: VncInputMode = VncInputMode.TOUCHPAD,
     val scalingMode: VncScalingMode = VncScalingMode.FIT,
     val showOnScreenControls: Boolean = true,
+    val floatingGamepadEnabled: Boolean = false,
+    val floatingGamepadOpacity: Int = 68,
     val keepScreenAwake: Boolean = true
 )
 

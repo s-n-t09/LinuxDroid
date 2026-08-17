@@ -16,7 +16,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Build RootFS Pack 3
+      - name: Build RootFS Pack 4
         run: |
           chmod +x rootfs/build-rootfs-pack-3.sh
           rootfs/build-rootfs-pack-3.sh
@@ -24,10 +24,10 @@ jobs:
       - name: Upload customized RootFS assets
         uses: actions/upload-artifact@v4
         with:
-          name: LinuxDroid-rootfs-pack-3
+          name: LinuxDroid-rootfs-pack-4
           if-no-files-found: error
           path: |
-            rootfs/release-pack-3/linuxdroid-rootfs__*.tar.xz
-            rootfs/release-pack-3/linuxdroid-rootfs__*.tar.xz.sha256
-            rootfs/release-pack-3/ROOTFS_RELEASE_NOTES.md
-            rootfs/release-pack-3/ROOTFS_SOURCES.md
+            rootfs/release-pack-4/linuxdroid-rootfs__*.tar.xz
+            rootfs/release-pack-4/linuxdroid-rootfs__*.tar.xz.sha256
+            rootfs/release-pack-4/ROOTFS_RELEASE_NOTES.md
+            rootfs/release-pack-4/ROOTFS_SOURCES.md

@@ -53,6 +53,15 @@ class ProotCommandFactory {
                 ))
             }
         }
+        if (distro.id == "debian-trixie") {
+            // Upstream image snapshots can retain a 127.0.0.53 systemd-resolved
+            // stub, while Android PRoot does not run that resolver. Bind a static
+            // resolver file so existing Debian installations regain network access.
+            val resolver = File(root, ".linuxdroid-resolv.conf").apply {
+                writeText("nameserver 1.1.1.1\\nnameserver 8.8.8.8\\noptions timeout:2 attempts:3\\n")
+            }
+            command.addAll(listOf("-b", "${shellQuote(resolver.absolutePath)}:/etc/resolv.conf"))
+        }
         command.addAll(listOf("-w", "/root", guestShell, "-l"))
         val environment = mutableListOf(
             "HOME=/root",

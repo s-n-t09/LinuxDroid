@@ -301,7 +301,7 @@ class MainActivity : AppCompatActivity() {
                     setTextColor(getColor(R.color.ld_muted))
                 })
                 status = TextView(this@MainActivity).apply {
-                    text = "Checking RootFS Pack 3 and private PulseAudio service…"
+                    text = "Checking RootFS Pack 4 and private PulseAudio service…"
                     textSize = 15f
                     setPadding(0, dp(2), 0, 0)
                     setTextColor(getColor(R.color.ld_text))
@@ -407,6 +407,8 @@ class MainActivity : AppCompatActivity() {
             val scaling = selector(listOf("Fit to screen", "One-to-one, pinch to zoom"), if (profile.scalingMode == VncScalingMode.FIT) 0 else 1)
             val readOnly = CheckBox(this@MainActivity).apply { text = "View only"; isChecked = profile.viewOnly }
             val controls = CheckBox(this@MainActivity).apply { text = "Show on-screen controls"; isChecked = profile.showOnScreenControls }
+            val gamepad = CheckBox(this@MainActivity).apply { text = "Enable floating virtual gamepad"; isChecked = profile.floatingGamepadEnabled }
+            val gamepadOpacity = field(profile.floatingGamepadOpacity.toString(), "Gamepad opacity (25-90%)", InputType.TYPE_CLASS_NUMBER)
             val keepAwake = CheckBox(this@MainActivity).apply { text = "Keep screen awake while connected"; isChecked = profile.keepScreenAwake }
             val form = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
@@ -414,7 +416,9 @@ class MainActivity : AppCompatActivity() {
                 addView(host); addView(port); addView(password)
                 addView(label("Input mode")); addView(inputMode)
                 addView(label("Scaling")); addView(scaling)
-                addView(readOnly); addView(controls); addView(keepAwake)
+                addView(readOnly); addView(controls); addView(gamepad)
+                addView(label("Floating gamepad appearance")); addView(gamepadOpacity)
+                addView(keepAwake)
             }
             AlertDialog.Builder(this@MainActivity)
                 .setTitle("Internal VNC connection")
@@ -425,6 +429,7 @@ class MainActivity : AppCompatActivity() {
                     lifecycleScope.launch {
                         val validPort = port.text.toString().toIntOrNull()?.takeIf { it in 1..65535 }
                         if (validPort == null) { showTemporaryRootfsStatus("VNC port must be between 1 and 65535."); return@launch }
+                        val opacity = gamepadOpacity.text.toString().toIntOrNull()?.coerceIn(25, 90) ?: profile.floatingGamepadOpacity
                         val updated = VncProfile(
                             host = host.text.toString().trim().ifBlank { "127.0.0.1" },
                             port = validPort,
@@ -434,6 +439,8 @@ class MainActivity : AppCompatActivity() {
                             inputMode = if (inputMode.selectedItemPosition == 0) VncInputMode.TOUCHPAD else VncInputMode.DIRECT_TOUCH,
                             scalingMode = if (scaling.selectedItemPosition == 0) VncScalingMode.FIT else VncScalingMode.ONE_TO_ONE,
                             showOnScreenControls = controls.isChecked,
+                            floatingGamepadEnabled = gamepad.isChecked,
+                            floatingGamepadOpacity = opacity,
                             keepScreenAwake = keepAwake.isChecked
                         )
                         local.saveSettings(current.copy(vnc = updated))
@@ -789,11 +796,11 @@ class MainActivity : AppCompatActivity() {
             .onSuccess { loaded ->
                 releaseDistributions = loaded
                 if (::installButton.isInitialized) installButton.isEnabled = loaded.isNotEmpty()
-                status.text = "RootFS Pack 3 online · ${loaded.size} distribution(s) available."
+                status.text = "RootFS Pack 4 online · ${loaded.size} distribution(s) available."
             }
             .onFailure {
                 if (::installButton.isInitialized) installButton.isEnabled = false
-                status.text = "RootFS Pack 3 error: ${it.message}"
+                status.text = "RootFS Pack 4 error: ${it.message}"
             }
     }
 

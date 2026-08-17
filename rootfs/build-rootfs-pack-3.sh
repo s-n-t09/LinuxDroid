@@ -10,11 +10,11 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT_DIR="${OUT_DIR:-$ROOT/rootfs/release-pack-3}"
+OUT_DIR="${OUT_DIR:-$ROOT/rootfs/release-pack-4}"
 CACHE_DIR="${CACHE_DIR:-$ROOT/.rootfs-source-cache}"
-WORK_DIR="${WORK_DIR:-$ROOT/.rootfs-work-pack-3}"
+WORK_DIR="${WORK_DIR:-$ROOT/.rootfs-work-pack-4}"
 UPSTREAM_REPO="termux/proot-distro"
-PACK_VERSION="${PACK_VERSION:-ld-2026.08-r2}"
+PACK_VERSION="${PACK_VERSION:-ld-2026.08-r3}"
 RELEASES_JSON="$CACHE_DIR/proot-distro-releases.json"
 
 require() { command -v "$1" >/dev/null || { echo "Missing required command: $1" >&2; exit 1; }; }
@@ -30,17 +30,17 @@ if [[ ! -s "$RELEASES_JSON" || "${REFRESH_SOURCES:-0}" == 1 ]]; then
 fi
 
 cat > "$OUT_DIR/ROOTFS_RELEASE_NOTES.md" <<'EOF'
-# LinuxDroid RootFS Pack 3
+# LinuxDroid RootFS Pack 4
 
-This is the only supported RootFS pack for LinuxDroid 0.4.0 and later. It contains customized images for Ubuntu, Debian Trixie, Alpine Linux, Arch Linux, and Fedora Linux only.
+This is the current LinuxDroid RootFS pack for LinuxDroid 0.4.0 and later. It contains customized images for Ubuntu, Debian Trixie, Alpine Linux, Arch Linux, and Fedora Linux only.
 
-Each image includes LinuxDroid's PulseAudio client configuration, an audio helper (`linuxdroid-audio`), an audible `paplay` test file, an explanatory MOTD, storage mountpoint directories, and current HTTPS package-mirror settings. The app's Desktop Setup wizard installs the native PulseAudio client and ALSA Pulse bridge when it installs a desktop. In a minimal image, run `linuxdroid-audio setup` once to install those client packages, then run `linuxdroid-audio test`.
+Each image includes LinuxDroid's PulseAudio client configuration, an audio helper (`linuxdroid-audio`), an audible `paplay` test file, an explanatory MOTD, storage mountpoint directories, and current HTTPS package-mirror settings. Debian Trixie additionally includes a static resolver file and an official deb822 source configuration so APT does not inherit an unusable systemd-resolved stub from the upstream image. The app's Desktop Setup wizard installs the native PulseAudio client and ALSA Pulse bridge when it installs a desktop. In a minimal image, run `linuxdroid-audio setup` once to install those client packages, then run `linuxdroid-audio test`.
 
 Fedora is available for `arm64-v8a` only because the upstream Termux PRoot Distro project does not publish a verified `armeabi-v7a` Fedora archive. LinuxDroid continues to support only `arm64-v8a` and `armeabi-v7a`; no x86/x86_64 images are included.
 EOF
 
 cat > "$OUT_DIR/ROOTFS_SOURCES.md" <<'EOF'
-# LinuxDroid RootFS Pack 3 Source Provenance
+# LinuxDroid RootFS Pack 4 Source Provenance
 
 | LinuxDroid asset | Android ABI | Upstream asset | Upstream release | Upstream SHA-256 |
 | --- | --- | --- | --- | --- |
@@ -186,10 +186,29 @@ configure_mirrors() {
   local stage="$1" distro="$2"
   case "$distro" in
     debian-trixie)
-      cat > "$stage/etc/apt/sources.list" <<'EOF'
-deb https://deb.debian.org/debian trixie main contrib non-free non-free-firmware
-deb https://deb.debian.org/debian trixie-updates main contrib non-free non-free-firmware
-deb https://security.debian.org/debian-security trixie-security main contrib non-free non-free-firmware
+      # The upstream snapshot uses a systemd-resolved stub (127.0.0.53), but
+      # Android PRoot does not run systemd-resolved. Keep a real resolver in
+      # the image and use Debian's current deb822 configuration with one CDN.
+      rm -f "$stage/etc/resolv.conf" "$stage/etc/apt/sources.list"
+      rm -rf "$stage/etc/apt/sources.list.d"
+      mkdir -p "$stage/etc/apt/sources.list.d"
+      cat > "$stage/etc/resolv.conf" <<'EOF'
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+options timeout:2 attempts:3
+EOF
+      cat > "$stage/etc/apt/sources.list.d/debian.sources" <<'EOF'
+Types: deb
+URIs: https://deb.debian.org/debian
+Suites: trixie trixie-updates
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+Types: deb
+URIs: https://deb.debian.org/debian-security
+Suites: trixie-security
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 EOF
       ;;
     ubuntu)

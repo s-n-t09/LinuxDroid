@@ -94,6 +94,12 @@ class VncCanvasView(context: Context) : View(context), RfbClient.Listener {
         click(buttonMask)
     }
 
+    /** Sends a press or release for a virtual gamepad key while it is held on screen. */
+    fun setVirtualKey(keySym: Int, held: Boolean) {
+        if (viewOnly) return
+        client?.sendKey(keySym, held)
+    }
+
     fun setModifier(keySym: Int, held: Boolean) {
         if (viewOnly) return
         if (held) heldModifiers += keySym else heldModifiers -= keySym
@@ -160,10 +166,20 @@ class VncCanvasView(context: Context) : View(context), RfbClient.Listener {
                 lastY = event.y
                 downTime = event.eventTime
                 moved = false
+                // Position the remote pointer immediately. This gives reliable visible
+                // feedback on Xvfb/x11vnc desktops before the first relative movement.
+                mapToDesktop(event.x, event.y).also { (x, y) ->
+                    pointerX = x
+                    pointerY = y
+                }
+                client?.sendPointer(0, pointerX, pointerY)
             }
             MotionEvent.ACTION_MOVE -> {
-                val dx = event.x - lastX
-                val dy = event.y - lastY
+                val target = targetRect()
+                val xScale = if (target.width() > 0f) desktopWidth / target.width() else 1f
+                val yScale = if (target.height() > 0f) desktopHeight / target.height() else 1f
+                val dx = (event.x - lastX) * xScale
+                val dy = (event.y - lastY) * yScale
                 moved = moved || abs(dx) > 2f || abs(dy) > 2f
                 pointerX = (pointerX + dx).toInt().coerceIn(0, desktopWidth - 1)
                 pointerY = (pointerY + dy).toInt().coerceIn(0, desktopHeight - 1)
@@ -171,7 +187,7 @@ class VncCanvasView(context: Context) : View(context), RfbClient.Listener {
                 lastX = event.x
                 lastY = event.y
             }
-            MotionEvent.ACTION_UP -> {
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (!moved && event.eventTime - downTime < 300) click(1)
             }
         }
