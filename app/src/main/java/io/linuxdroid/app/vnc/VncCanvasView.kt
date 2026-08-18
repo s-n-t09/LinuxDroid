@@ -27,8 +27,10 @@ class VncCanvasView(context: Context) : View(context), RfbClient.Listener {
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val heldModifiers = mutableSetOf<Int>()
     private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScaleBegin(detector: ScaleGestureDetector): Boolean = scalingMode == VncScalingMode.ONE_TO_ONE
+
         override fun onScale(detector: ScaleGestureDetector): Boolean {
-            if (scalingMode == VncScalingMode.FIT) scalingMode = VncScalingMode.ONE_TO_ONE
+            if (scalingMode != VncScalingMode.ONE_TO_ONE) return false
             userScale = (userScale * detector.scaleFactor).coerceIn(0.25f, 5f)
             invalidate()
             return true
@@ -126,8 +128,8 @@ class VncCanvasView(context: Context) : View(context), RfbClient.Listener {
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         requestFocus()
-        scaleDetector.onTouchEvent(event)
         if (!connected || viewOnly) return true
+        scaleDetector.onTouchEvent(event)
         if (scaleDetector.isInProgress) return true
 
         if (event.pointerCount >= 2) {
@@ -292,7 +294,9 @@ class VncCanvasView(context: Context) : View(context), RfbClient.Listener {
     override fun onDisconnected(error: Throwable?) {
         post {
             connected = false
-            onStatus(error?.message ?: "VNC disconnected")
+            bitmap = null
+            onStatus(error?.message?.let { "VNC disconnected: $it" } ?: "VNC disconnected")
+            invalidate()
         }
     }
 

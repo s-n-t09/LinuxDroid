@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   publish-patch:
-    name: Build and publish LinuxDroid 0.4.7
+    name: Build and publish LinuxDroid 0.4.8
     runs-on: ubuntu-24.04
     timeout-minutes: 30
 
@@ -39,19 +39,19 @@ jobs:
       - name: Build installable debug APKs
         run: ./gradlew --no-daemon --stacktrace clean assembleDebug
 
-      - name: Publish LinuxDroid 0.4.7
+      - name: Publish LinuxDroid 0.4.8
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.4.7 \
-            app/build/outputs/apk/debug/app-arm64-v8a-debug.apk#LinuxDroid-v0.4.7-arm64-v8a-debug.apk \
-            app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk#LinuxDroid-v0.4.7-armeabi-v7a-debug.apk \
+          gh release create v0.4.8 \
+            app/build/outputs/apk/debug/app-arm64-v8a-debug.apk#LinuxDroid-v0.4.8-arm64-v8a-debug.apk \
+            app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk#LinuxDroid-v0.4.8-armeabi-v7a-debug.apk \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "LinuxDroid v0.4.7 — VNC controls, gamepad, and Debian DNS repair" \
-            --notes "LinuxDroid 0.4.7 restores the complete bottom VNC extra-key strip, improves touchpad pointer positioning and scaled mouse movement, adds an optional transparent draggable virtual gamepad with configurable opacity, and selects RootFS Pack 4. Debian Trixie sessions now bind a working resolver to repair existing images affected by the inherited systemd-resolved stub."
+            --title "LinuxDroid v0.4.8 — VNC touch connection repair" \
+            --notes "LinuxDroid 0.4.8 fixes VNC disconnecting on its first touch by moving RFB socket writes out of Android's UI thread into a serialized worker. Pinch zoom is now disabled in normal Fit mode and activates only after selecting Scale from the bottom VNC controls. A disconnected framebuffer is cleared so a frozen desktop image cannot be mistaken for a live session."
 
       - name: Remove replaced app release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release delete v0.4.6 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+        run: gh release delete v0.4.7 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true

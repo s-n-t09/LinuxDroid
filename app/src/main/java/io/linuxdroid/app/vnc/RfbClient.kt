@@ -5,11 +5,14 @@ import android.graphics.Rect
 import io.linuxdroid.app.data.VncProfile
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
@@ -26,15 +29,19 @@ class RfbClient(private val profile: VncProfile, private val listener: Listener)
     }
 
     private val writeLock = Any()
+    private val outboundPackets = LinkedBlockingQueue<ByteArray>()
     @Volatile private var running = false
     @Volatile private var socket: Socket? = null
     @Volatile private var output: DataOutputStream? = null
+    @Volatile private var terminalError: Throwable? = null
     private var framebuffer: Bitmap? = null
     private var width = 0
     private var height = 0
 
     fun connect() {
         check(!running) { "VNC connection is already active." }
+        outboundPackets.clear()
+        terminalError = null
         running = true
         thread(name = "LinuxDroid-RFB", isDaemon = true) {
             var failure: Throwable? = null
@@ -54,15 +61,17 @@ class RfbClient(private val profile: VncProfile, private val listener: Listener)
             } finally {
                 running = false
                 output = null
+                outboundPackets.clear()
                 runCatching { socket?.close() }
                 socket = null
-                listener.onDisconnected(failure)
+                listener.onDisconnected(terminalError ?: failure)
             }
         }
     }
 
     fun disconnect() {
         running = false
+        outboundPackets.clear()
         runCatching { socket?.close() }
     }
 
@@ -124,6 +133,7 @@ class RfbClient(private val profile: VncProfile, private val listener: Listener)
         require(nameLength in 0..1_048_576) { "Invalid VNC desktop name." }
         val desktopName = ByteArray(nameLength).also(input::readFully).toString(StandardCharsets.UTF_8)
         framebuffer = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        startWriter(dataOutput)
         setPixelFormat(dataOutput)
         setEncodings(dataOutput)
         framebufferRequest(dataOutput, false)
@@ -241,21 +251,46 @@ class RfbClient(private val profile: VncProfile, private val listener: Listener)
         writeShort(0); writeShort(0); writeShort(width); writeShort(height)
     }
 
+    /**
+     * Serializes a packet without performing socket I/O on the caller thread.
+     * Android invokes touch callbacks on the main thread, where direct socket writes
+     * raise NetworkOnMainThreadException and used to close VNC on the first touch.
+     */
     private fun writePacket(block: DataOutputStream.() -> Unit) {
-        synchronized(writeLock) {
-            val destination = output ?: return
-            runCatching {
-                destination.block()
-                destination.flush()
-            }.onFailure { error ->
-                // Touch and key events originate on the Android UI thread. A dropped
-                // socket must end the RFB connection cleanly rather than crash the viewer.
-                running = false
-                output = null
-                runCatching { socket?.close() }
-                listener.onDisconnected(error)
+        if (!running || output == null) return
+        val packet = runCatching {
+            val buffer = ByteArrayOutputStream()
+            DataOutputStream(buffer).use { stream -> stream.block() }
+            buffer.toByteArray()
+        }.getOrElse { error ->
+            abort(error)
+            return
+        }
+        outboundPackets.offer(packet)
+    }
+
+    private fun startWriter(destination: DataOutputStream) {
+        thread(name = "LinuxDroid-RFB-writer", isDaemon = true) {
+            try {
+                while (running) {
+                    val packet = outboundPackets.poll(500, TimeUnit.MILLISECONDS) ?: continue
+                    synchronized(writeLock) {
+                        destination.write(packet)
+                        destination.flush()
+                    }
+                }
+            } catch (error: Throwable) {
+                if (running) abort(error)
             }
         }
+    }
+
+    private fun abort(error: Throwable) {
+        terminalError = error
+        running = false
+        outboundPackets.clear()
+        output = null
+        runCatching { socket?.close() }
     }
 
     private fun readFailureReason(input: DataInputStream): String {
