@@ -168,13 +168,8 @@ class VncCanvasView(context: Context) : View(context), RfbClient.Listener {
                 lastY = event.y
                 downTime = event.eventTime
                 moved = false
-                // Position the remote pointer immediately. This gives reliable visible
-                // feedback on Xvfb/x11vnc desktops before the first relative movement.
-                mapToDesktop(event.x, event.y).also { (x, y) ->
-                    pointerX = x
-                    pointerY = y
-                }
-                client?.sendPointer(0, pointerX, pointerY)
+                // Touchpad is deliberately relative: touching elsewhere on the phone
+                // must not teleport the remote pointer to that absolute position.
             }
             MotionEvent.ACTION_MOVE -> {
                 val target = targetRect()

@@ -30,7 +30,7 @@ class LinuxSessionController(context: Context) : TerminalSessionClient {
     private val appContext = context.applicationContext
     private val local = LocalRepository(appContext)
     private val runtimeInstaller = RuntimeInstaller(appContext, local)
-    private val prootCommands = ProotCommandFactory()
+    private val prootCommands = ProotCommandFactory(appContext)
     private val pulseAudio = PulseAudioController(local)
     private val sessionLog = SessionLogStore(local)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -88,6 +88,7 @@ class LinuxSessionController(context: Context) : TerminalSessionClient {
             }
 
             val first = createTerminalLocked(distro, preparedRuntime, settings)
+            queueStartupServices(first, settings)
             _state.value = SessionState.RUNNING
             first
         } catch (error: Throwable) {
@@ -146,6 +147,26 @@ class LinuxSessionController(context: Context) : TerminalSessionClient {
             terminal.updateSize(80, 24)
             terminalSessions[terminal.mHandle] = terminal
         }
+    }
+
+    /** Queues enabled guest commands once on the first interactive shell of each boot. */
+    private fun queueStartupServices(firstTerminal: TerminalSession, settings: AppSettings) {
+        val enabled = settings.startupServices.filter { it.enabled && it.command.isNotBlank() }
+        if (enabled.isEmpty()) return
+        val command = buildString {
+            append("printf '\\n[LinuxDroid] Starting configured services…\\n'\\n")
+            enabled.forEach { service ->
+                val safeId = service.id.filter { it.isLetterOrDigit() || it == '-' }.ifBlank { "service" }
+                append("( ").append(service.command.trim()).append(" )")
+                append(" > /tmp/linuxdroid-startup-").append(safeId).append(".log 2>&1 &\\n")
+            }
+            append("printf '[LinuxDroid] Startup services launched. Logs: /tmp/linuxdroid-startup-*.log\\n'\\n")
+        }
+        firstTerminal.write(command)
+        sessionLog.recordRuntimeStatus(
+            "Queued ${enabled.size} configured startup service(s) after guest shell launch. " +
+                "Guest logs are written to /tmp/linuxdroid-startup-*.log."
+        )
     }
 
     private fun clearRuntimeStateLocked() {

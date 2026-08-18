@@ -2,6 +2,7 @@ package io.linuxdroid.app.vnc
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -21,7 +22,7 @@ import io.linuxdroid.app.data.LocalRepository
 import io.linuxdroid.app.data.VncProfile
 import kotlinx.coroutines.launch
 
-/** Internal mobile VNC viewer with a full bottom key strip and optional virtual gamepad. */
+/** Internal mobile VNC viewer with a complete bottom key strip and optional floating game controls. */
 class VncActivity : AppCompatActivity() {
     private lateinit var canvas: VncCanvasView
     private lateinit var status: TextView
@@ -55,6 +56,11 @@ class VncActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             val profile = LocalRepository(this@VncActivity).settings().vnc
+            requestedOrientation = if (profile.forceLandscape) {
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            } else {
+                ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
             if (profile.keepScreenAwake) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             if (profile.showOnScreenControls) {
                 content.addView(buildBottomControls(), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -140,19 +146,35 @@ class VncActivity : AppCompatActivity() {
         }
     }
 
+    /** Adds independent, card-free buttons so the gamepad stays visible without obscuring the desktop. */
     private fun addGamepad(profile: VncProfile) {
         val overlay = FrameLayout(this).apply {
             visibility = if (profile.floatingGamepadEnabled) View.VISIBLE else View.GONE
             isClickable = false
             isFocusable = false
         }
-        val opacity = (profile.floatingGamepadOpacity.coerceIn(25, 90) / 100f)
-        overlay.addView(buildDpad(opacity), FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.START).apply {
-            setMargins(18, 0, 0, 86)
-        })
-        overlay.addView(buildActionPad(opacity), FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.END).apply {
-            setMargins(0, 0, 18, 86)
-        })
+        val opacity = profile.floatingGamepadOpacity.coerceIn(25, 90) / 100f
+        val bottom = 106
+        fun add(label: String, keySym: Int, gravity: Int, left: Int = 0, right: Int = 0, below: Int) {
+            overlay.addView(
+                gameButton(label, keySym, opacity),
+                FrameLayout.LayoutParams(dp(54), dp(54), gravity).apply {
+                    setMargins(dp(left), 0, dp(right), dp(below))
+                }
+            )
+        }
+
+        // Direction buttons occupy the left edge and action buttons the right edge.
+        add("↑", 0xff52, Gravity.BOTTOM or Gravity.START, left = 78, below = bottom + 72)
+        add("←", 0xff51, Gravity.BOTTOM or Gravity.START, left = 18, below = bottom + 18)
+        add("→", 0xff53, Gravity.BOTTOM or Gravity.START, left = 138, below = bottom + 18)
+        add("↓", 0xff54, Gravity.BOTTOM or Gravity.START, left = 78, below = bottom - 36)
+
+        add("Y", 's'.code, Gravity.BOTTOM or Gravity.END, right = 78, below = bottom + 72)
+        add("X", 'a'.code, Gravity.BOTTOM or Gravity.END, right = 138, below = bottom + 18)
+        add("B", 'x'.code, Gravity.BOTTOM or Gravity.END, right = 18, below = bottom + 18)
+        add("A", 'z'.code, Gravity.BOTTOM or Gravity.END, right = 78, below = bottom - 36)
+
         root.addView(overlay, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         gamepadOverlay = overlay
     }
@@ -160,68 +182,26 @@ class VncActivity : AppCompatActivity() {
     private fun toggleGamepad() {
         val overlay = gamepadOverlay ?: return
         overlay.visibility = if (overlay.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-        status.text = if (overlay.visibility == View.VISIBLE) "Virtual gamepad enabled. Drag the D-pad or action pad by its title." else "Virtual gamepad hidden."
+        status.text = if (overlay.visibility == View.VISIBLE) "Virtual gamepad enabled." else "Virtual gamepad hidden."
     }
 
-    private fun buildDpad(opacity: Float): LinearLayout {
-        val card = gameCard(opacity)
-        val handle = gamepadHandle("D-pad · drag")
-        card.addView(handle)
-        fun row(vararg buttons: Button) = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            buttons.forEach { addView(it) }
-        }
-        card.addView(row(gameButton("↑", 0xff52)))
-        card.addView(row(gameButton("←", 0xff51), gameButton("→", 0xff53)))
-        card.addView(row(gameButton("↓", 0xff54)))
-        makeDraggable(card, handle)
-        return card
-    }
-
-    private fun buildActionPad(opacity: Float): LinearLayout {
-        val card = gameCard(opacity)
-        val handle = gamepadHandle("Actions · drag")
-        card.addView(handle)
-        fun row(vararg buttons: Button) = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            buttons.forEach { addView(it) }
-        }
-        card.addView(row(gameButton("X", 'a'.code), gameButton("Y", 's'.code)))
-        card.addView(row(gameButton("A", 'z'.code), gameButton("B", 'x'.code)))
-        card.addView(row(gameButton("Select", 0xff1b), gameButton("Start", 0xff0d)))
-        makeDraggable(card, handle)
-        return card
-    }
-
-    private fun gameCard(opacity: Float): LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(8, 6, 8, 8)
-        alpha = opacity
-        background = GradientDrawable().apply {
-            setColor(0xF0182436.toInt())
-            cornerRadius = 22f
-            setStroke(1, 0x99D7E3F4.toInt())
-        }
-    }
-
-    private fun gamepadHandle(label: String): TextView = TextView(this).apply {
+    private fun gameButton(label: String, keySym: Int, opacity: Float): Button = Button(this).apply {
         text = label
-        textSize = 11f
-        gravity = Gravity.CENTER
-        setTextColor(Color.WHITE)
-        setPadding(8, 3, 8, 6)
-    }
-
-    private fun gameButton(label: String, keySym: Int): Button = Button(this).apply {
-        text = label
-        textSize = 12f
+        textSize = 17f
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
         isAllCaps = false
         minHeight = 0
         minimumHeight = 0
+        minWidth = 0
         minimumWidth = 0
-        setPadding(12, 0, 12, 0)
+        alpha = opacity
+        elevation = dp(5).toFloat()
+        setTextColor(Color.WHITE)
+        background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(0xD9344B73.toInt())
+            setStroke(dp(1), 0xB0E8F2FF.toInt())
+        }
         setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> canvas.setVirtualKey(keySym, true)
@@ -231,30 +211,5 @@ class VncActivity : AppCompatActivity() {
         }
     }
 
-    private fun makeDraggable(card: View, handle: View) {
-        var originX = 0f
-        var originY = 0f
-        var startLeft = 0
-        var startTop = 0
-        handle.setOnTouchListener { _, event ->
-            val params = card.layoutParams as FrameLayout.LayoutParams
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    originX = event.rawX
-                    originY = event.rawY
-                    startLeft = card.left
-                    startTop = card.top
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    params.gravity = Gravity.TOP or Gravity.START
-                    params.leftMargin = (startLeft + event.rawX - originX).toInt().coerceAtLeast(0)
-                    params.topMargin = (startTop + event.rawY - originY).toInt().coerceAtLeast(0)
-                    card.layoutParams = params
-                    true
-                }
-                else -> true
-            }
-        }
-    }
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }

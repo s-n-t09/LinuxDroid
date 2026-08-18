@@ -1,8 +1,10 @@
 package io.linuxdroid.app.engine
 
+import android.content.Context
+import android.net.ConnectivityManager
 import android.os.Environment
-import io.linuxdroid.app.data.InstalledDistro
 import io.linuxdroid.app.data.AppSettings
+import io.linuxdroid.app.data.InstalledDistro
 import java.io.File
 
 data class ProotLaunch(
@@ -12,7 +14,7 @@ data class ProotLaunch(
     val environment: Array<String>
 )
 
-class ProotCommandFactory {
+class ProotCommandFactory(private val context: Context) {
     fun createInteractiveLaunch(
         distro: InstalledDistro,
         runtime: RuntimeInstaller.RuntimePaths,
@@ -31,9 +33,8 @@ class ProotCommandFactory {
             "--link2symlink",
             "-0",
             "-r", shellQuote(root.absolutePath),
-            // Bind the guest executable and loader paths explicitly. This avoids
-            // Android-host path resolution for ELF interpreters such as Alpine's
-            // /lib/ld-musl-aarch64.so.1 during the first execve.
+            // Bind guest executable and loader paths to avoid Android host resolution
+            // for ELF interpreters during the first guest execve.
             "-b", "${shellQuote(root.absolutePath)}/bin:/bin",
             "-b", "${shellQuote(root.absolutePath)}/lib:/lib",
             "-b", "${shellQuote(root.absolutePath)}/usr:/usr",
@@ -53,15 +54,7 @@ class ProotCommandFactory {
                 ))
             }
         }
-        if (distro.id == "debian-trixie") {
-            // Upstream image snapshots can retain a 127.0.0.53 systemd-resolved
-            // stub, while Android PRoot does not run that resolver. Bind a static
-            // resolver file so existing Debian installations regain network access.
-            val resolver = File(root, ".linuxdroid-resolv.conf").apply {
-                writeText("nameserver 1.1.1.1\\nnameserver 8.8.8.8\\noptions timeout:2 attempts:3\\n")
-            }
-            command.addAll(listOf("-b", "${shellQuote(resolver.absolutePath)}:/etc/resolv.conf"))
-        }
+        if (distro.id == "debian-trixie") prepareDebianResolver(root)
         command.addAll(listOf("-w", "/root", guestShell, "-l"))
         val environment = mutableListOf(
             "HOME=/root",
@@ -101,6 +94,33 @@ class ProotCommandFactory {
         val adjusted = base.arguments.copyOf()
         adjusted[2] = adjusted[2].substringBeforeLast(" -w ") + " -w /root /bin/sh -lc ${shellQuote(guestCommand)}"
         return base.copy(arguments = adjusted)
+    }
+
+    /**
+     * Debian images can carry an absolute /etc/resolv.conf symlink to an absent
+     * systemd-resolved stub. Replace that link with a normal guest file on every
+     * launch and use Android's active DNS servers, not hard-coded public DNS.
+     */
+    private fun prepareDebianResolver(root: File) {
+        val resolver = File(root, "etc/resolv.conf")
+        resolver.parentFile?.mkdirs()
+        // File.delete removes a symlink itself, rather than its target.
+        resolver.delete()
+        val servers = activeDnsServers().ifEmpty { listOf("1.1.1.1", "8.8.8.8") }
+        resolver.writeText(buildString {
+            servers.distinct().forEach { append("nameserver ").append(it).append('\n') }
+            append("options timeout:2 attempts:3\n")
+        })
+        resolver.setReadable(true, false)
+    }
+
+    private fun activeDnsServers(): List<String> {
+        val manager = context.getSystemService(ConnectivityManager::class.java) ?: return emptyList()
+        return manager.activeNetwork?.let(manager::getLinkProperties)
+            ?.dnsServers
+            ?.mapNotNull { it.hostAddress?.substringBefore('%') }
+            ?.filter { it.isNotBlank() }
+            .orEmpty()
     }
 
     private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"

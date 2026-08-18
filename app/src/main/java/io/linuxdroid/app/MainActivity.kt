@@ -48,6 +48,7 @@ import io.linuxdroid.app.data.RootfsInstaller
 import io.linuxdroid.app.data.RootfsNetwork
 import io.linuxdroid.app.data.RootfsReleaseClient
 import io.linuxdroid.app.data.SetupSelection
+import io.linuxdroid.app.data.StartupService
 import io.linuxdroid.app.data.VncInputMode
 import io.linuxdroid.app.data.VncProfile
 import io.linuxdroid.app.data.VncScalingMode
@@ -62,6 +63,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.UUID
 
 class MainActivity : AppCompatActivity() {
     private enum class ActionTone(val background: Int, val foreground: Int) {
@@ -200,6 +202,7 @@ class MainActivity : AppCompatActivity() {
         }
         addView(sectionTitle("Tools and diagnostics", "Connection, storage, session controls, and troubleshooting"), linearParams(top = 8, bottom = 10))
         addView(actionButton("Configure VNC", ActionTone.VIOLET) { configureVnc() }, linearParams(bottom = 10))
+        addView(actionButton("Startup services", ActionTone.PRIMARY) { configureStartupServices() }, linearParams(bottom = 10))
         addView(actionButton("Shared storage access", ActionTone.SUCCESS) { configureSharedStorage() }, linearParams(bottom = 10))
         addView(actionButton("Linux session controls", ActionTone.WARNING) { showSessionControls() }, linearParams(bottom = 10))
         addView(actionButton("Session diagnostics", ActionTone.INFO) { showSessionLog() }, linearParams(bottom = 10))
@@ -383,6 +386,126 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun configureStartupServices() {
+        lifecycleScope.launch {
+            var services = local.settings().startupServices
+            val list = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(20), dp(4), dp(20), dp(4))
+            }
+            val scroll = ScrollView(this@MainActivity).apply { addView(list) }
+            lateinit var dialog: AlertDialog
+
+            fun save(updated: List<StartupService>) {
+                services = updated
+                lifecycleScope.launch {
+                    val settings = local.settings()
+                    local.saveSettings(settings.copy(startupServices = services))
+                    showTemporaryRootfsStatus("Startup services saved. Restart the distribution to apply them.")
+                }
+            }
+            fun render() {
+                list.removeAllViews()
+                if (services.isEmpty()) {
+                    list.addView(TextView(this@MainActivity).apply {
+                        text = "No startup services yet. Add a shell command to run once after a LinuxDroid session starts."
+                        setTextColor(getColor(R.color.ld_muted))
+                        setPadding(0, dp(12), 0, dp(12))
+                    })
+                    return
+                }
+                services.forEach { service ->
+                    val card = MaterialCardView(this@MainActivity).apply {
+                        radius = dp(16).toFloat()
+                        cardElevation = 0f
+                        setCardBackgroundColor(getColor(R.color.ld_surface_alt))
+                        strokeColor = getColor(R.color.ld_outline)
+                        strokeWidth = dp(1)
+                    }
+                    val row = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(dp(12), dp(10), dp(12), dp(10))
+                    }
+                    val header = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER_VERTICAL }
+                    header.addView(TextView(this@MainActivity).apply {
+                        text = service.name
+                        typeface = Typeface.DEFAULT_BOLD
+                        textSize = 15f
+                        setTextColor(getColor(R.color.ld_text))
+                    }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                    header.addView(MaterialSwitch(this@MainActivity).apply {
+                        isChecked = service.enabled
+                        setOnCheckedChangeListener { _, enabled ->
+                            save(services.map { if (it.id == service.id) it.copy(enabled = enabled) else it })
+                        }
+                    })
+                    row.addView(header)
+                    row.addView(TextView(this@MainActivity).apply {
+                        text = service.command
+                        textSize = 12f
+                        typeface = Typeface.MONOSPACE
+                        setTextColor(getColor(R.color.ld_muted))
+                        setPadding(0, dp(5), 0, dp(6))
+                    })
+                    val actions = LinearLayout(this@MainActivity).apply { gravity = Gravity.END }
+                    actions.addView(MaterialButton(this@MainActivity).apply {
+                        text = "Edit"
+                        isAllCaps = false
+                        setOnClickListener { showStartupServiceEditor(service) { updated -> save(services.map { if (it.id == service.id) updated else it }); render() } }
+                    })
+                    actions.addView(MaterialButton(this@MainActivity).apply {
+                        text = "Remove"
+                        isAllCaps = false
+                        setOnClickListener { save(services.filterNot { it.id == service.id }); render() }
+                    })
+                    row.addView(actions)
+                    card.addView(row)
+                    list.addView(card, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
+                }
+            }
+            dialog = AlertDialog.Builder(this@MainActivity)
+                .setTitle("Startup services")
+                .setMessage("LinuxDroid runs each enabled command once after the selected distribution starts. Use normal guest-shell commands; they replace only the systemd service use case, not Android background services.")
+                .setView(scroll)
+                .setNegativeButton("Close", null)
+                .setPositiveButton("Add service", null)
+                .show()
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                showStartupServiceEditor(null) { created -> save(services + created); render() }
+            }
+            render()
+        }
+    }
+
+    private fun showStartupServiceEditor(existing: StartupService?, onSave: (StartupService) -> Unit) {
+        fun field(value: String, hint: String) = EditText(this).apply { setText(value); this.hint = hint }
+        val name = field(existing?.name.orEmpty(), "Service name")
+        val command = field(existing?.command.orEmpty(), "Command, e.g. /usr/local/bin/my-service --daemon").apply { minLines = 3; gravity = Gravity.TOP }
+        val enabled = CheckBox(this).apply { text = "Enable at session start"; isChecked = existing?.enabled ?: true }
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), 0, dp(24), 0)
+            addView(name); addView(command); addView(enabled)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(if (existing == null) "Add startup service" else "Edit startup service")
+            .setView(form)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Save") { _, _ ->
+                val commandText = command.text.toString().trim()
+                if (commandText.isBlank()) {
+                    showTemporaryRootfsStatus("Startup service command cannot be empty.")
+                } else {
+                    onSave(StartupService(
+                        id = existing?.id ?: UUID.randomUUID().toString(),
+                        name = name.text.toString().trim().ifBlank { "Startup command" },
+                        command = commandText,
+                        enabled = enabled.isChecked
+                    ))
+                }
+            }.show()
+    }
+
     private fun configureVnc() {
         lifecycleScope.launch {
             val current = local.settings()
@@ -407,6 +530,7 @@ class MainActivity : AppCompatActivity() {
             val scaling = selector(listOf("Fit to screen", "One-to-one, pinch to zoom"), if (profile.scalingMode == VncScalingMode.FIT) 0 else 1)
             val readOnly = CheckBox(this@MainActivity).apply { text = "View only"; isChecked = profile.viewOnly }
             val controls = CheckBox(this@MainActivity).apply { text = "Show on-screen controls"; isChecked = profile.showOnScreenControls }
+            val landscape = CheckBox(this@MainActivity).apply { text = "Force landscape while connected"; isChecked = profile.forceLandscape }
             val gamepad = CheckBox(this@MainActivity).apply { text = "Enable floating virtual gamepad"; isChecked = profile.floatingGamepadEnabled }
             val gamepadOpacity = field(profile.floatingGamepadOpacity.toString(), "Gamepad opacity (25-90%)", InputType.TYPE_CLASS_NUMBER)
             val keepAwake = CheckBox(this@MainActivity).apply { text = "Keep screen awake while connected"; isChecked = profile.keepScreenAwake }
@@ -416,7 +540,7 @@ class MainActivity : AppCompatActivity() {
                 addView(host); addView(port); addView(password)
                 addView(label("Input mode")); addView(inputMode)
                 addView(label("Scaling")); addView(scaling)
-                addView(readOnly); addView(controls); addView(gamepad)
+                addView(readOnly); addView(controls); addView(landscape); addView(gamepad)
                 addView(label("Floating gamepad appearance")); addView(gamepadOpacity)
                 addView(keepAwake)
             }
@@ -439,6 +563,7 @@ class MainActivity : AppCompatActivity() {
                             inputMode = if (inputMode.selectedItemPosition == 0) VncInputMode.TOUCHPAD else VncInputMode.DIRECT_TOUCH,
                             scalingMode = if (scaling.selectedItemPosition == 0) VncScalingMode.FIT else VncScalingMode.ONE_TO_ONE,
                             showOnScreenControls = controls.isChecked,
+                            forceLandscape = landscape.isChecked,
                             floatingGamepadEnabled = gamepad.isChecked,
                             floatingGamepadOpacity = opacity,
                             keepScreenAwake = keepAwake.isChecked

@@ -71,9 +71,18 @@ data class VncProfile(
     val inputMode: VncInputMode = VncInputMode.TOUCHPAD,
     val scalingMode: VncScalingMode = VncScalingMode.FIT,
     val showOnScreenControls: Boolean = true,
+    val forceLandscape: Boolean = true,
     val floatingGamepadEnabled: Boolean = false,
     val floatingGamepadOpacity: Int = 68,
     val keepScreenAwake: Boolean = true
+)
+
+@Serializable
+data class StartupService(
+    val id: String,
+    val name: String,
+    val command: String,
+    val enabled: Boolean = true
 )
 
 @Serializable
@@ -82,6 +91,7 @@ data class AppSettings(
     val keepScreenAwake: Boolean = true,
     val pulseAudioEnabled: Boolean = true,
     val showMotdOnStart: Boolean = true,
+    val startupServices: List<StartupService> = emptyList(),
     val vnc: VncProfile = VncProfile()
 )
 
