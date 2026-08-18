@@ -10,11 +10,11 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT_DIR="${OUT_DIR:-$ROOT/rootfs/release-pack-4}"
+OUT_DIR="${OUT_DIR:-$ROOT/rootfs/release-1}"
 CACHE_DIR="${CACHE_DIR:-$ROOT/.rootfs-source-cache}"
-WORK_DIR="${WORK_DIR:-$ROOT/.rootfs-work-pack-4}"
+WORK_DIR="${WORK_DIR:-$ROOT/.rootfs-work-1}"
 UPSTREAM_REPO="termux/proot-distro"
-PACK_VERSION="${PACK_VERSION:-ld-2026.08-r3}"
+PACK_VERSION="${PACK_VERSION:-ld-1.0}"
 RELEASES_JSON="$CACHE_DIR/proot-distro-releases.json"
 
 require() { command -v "$1" >/dev/null || { echo "Missing required command: $1" >&2; exit 1; }; }
@@ -30,9 +30,9 @@ if [[ ! -s "$RELEASES_JSON" || "${REFRESH_SOURCES:-0}" == 1 ]]; then
 fi
 
 cat > "$OUT_DIR/ROOTFS_RELEASE_NOTES.md" <<'EOF'
-# LinuxDroid RootFS Pack 4
+# LinuxDroid RootFS 1
 
-This is the current LinuxDroid RootFS pack for LinuxDroid 0.4.0 and later. It contains customized images for Ubuntu, Debian Trixie, Alpine Linux, Arch Linux, and Fedora Linux only.
+This is the official LinuxDroid RootFS 1 release for LinuxDroid 1.0 and later. It contains customized images for Ubuntu, Debian Trixie, Alpine Linux, Arch Linux, and Fedora Linux only.
 
 Each image includes LinuxDroid's PulseAudio client configuration, an audio helper (`linuxdroid-audio`), an audible `paplay` test file, an explanatory MOTD, storage mountpoint directories, and current HTTPS package-mirror settings. Debian Trixie additionally includes a static resolver file and an official deb822 source configuration so APT does not inherit an unusable systemd-resolved stub from the upstream image. The app's Desktop Setup wizard installs the native PulseAudio client and ALSA Pulse bridge when it installs a desktop. In a minimal image, run `linuxdroid-audio setup` once to install those client packages, then run `linuxdroid-audio test`.
 
@@ -40,7 +40,7 @@ Fedora is available for `arm64-v8a` only because the upstream Termux PRoot Distr
 EOF
 
 cat > "$OUT_DIR/ROOTFS_SOURCES.md" <<'EOF'
-# LinuxDroid RootFS Pack 4 Source Provenance
+# LinuxDroid RootFS 1 Source Provenance
 
 | LinuxDroid asset | Android ABI | Upstream asset | Upstream release | Upstream SHA-256 |
 | --- | --- | --- | --- | --- |

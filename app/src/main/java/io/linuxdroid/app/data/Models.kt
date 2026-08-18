@@ -38,7 +38,8 @@ data class InstalledDistro(
     val architecture: String,
     val rootfsDirectory: String,
     val installedAtEpochMs: Long,
-    val setup: SetupSelection? = null
+    val setup: SetupSelection? = null,
+    val startupServices: List<StartupService> = emptyList()
 )
 
 @Serializable
@@ -62,6 +63,28 @@ enum class VncInputMode { DIRECT_TOUCH, TOUCHPAD }
 enum class VncScalingMode { FIT, ONE_TO_ONE }
 
 @Serializable
+data class GamepadButtonConfig(
+    val id: String,
+    val label: String,
+    val keySym: Int,
+    /** Coordinates are percentages of the VNC viewer overlay. */
+    val xPercent: Int,
+    val yPercent: Int,
+    val enabled: Boolean = true
+)
+
+fun defaultGamepadButtons(): List<GamepadButtonConfig> = listOf(
+    GamepadButtonConfig("up", "↑", 0xff52, 11, 62),
+    GamepadButtonConfig("left", "←", 0xff51, 3, 70),
+    GamepadButtonConfig("right", "→", 0xff53, 19, 70),
+    GamepadButtonConfig("down", "↓", 0xff54, 11, 78),
+    GamepadButtonConfig("y", "Y", 's'.code, 81, 62),
+    GamepadButtonConfig("x", "X", 'a'.code, 73, 70),
+    GamepadButtonConfig("b", "B", 'x'.code, 89, 70),
+    GamepadButtonConfig("a", "A", 'z'.code, 81, 78)
+)
+
+@Serializable
 data class VncProfile(
     val host: String = "127.0.0.1",
     val port: Int = 5901,
@@ -73,7 +96,9 @@ data class VncProfile(
     val showOnScreenControls: Boolean = true,
     val forceLandscape: Boolean = true,
     val floatingGamepadEnabled: Boolean = false,
+    val invertGamepadDpad: Boolean = false,
     val floatingGamepadOpacity: Int = 68,
+    val gamepadButtons: List<GamepadButtonConfig> = defaultGamepadButtons(),
     val keepScreenAwake: Boolean = true
 )
 

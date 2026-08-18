@@ -202,7 +202,6 @@ class MainActivity : AppCompatActivity() {
         }
         addView(sectionTitle("Tools and diagnostics", "Connection, storage, session controls, and troubleshooting"), linearParams(top = 8, bottom = 10))
         addView(actionButton("Configure VNC", ActionTone.VIOLET) { configureVnc() }, linearParams(bottom = 10))
-        addView(actionButton("Startup services", ActionTone.PRIMARY) { configureStartupServices() }, linearParams(bottom = 10))
         addView(actionButton("Shared storage access", ActionTone.SUCCESS) { configureSharedStorage() }, linearParams(bottom = 10))
         addView(actionButton("Linux session controls", ActionTone.WARNING) { showSessionControls() }, linearParams(bottom = 10))
         addView(actionButton("Session diagnostics", ActionTone.INFO) { showSessionLog() }, linearParams(bottom = 10))
@@ -304,7 +303,7 @@ class MainActivity : AppCompatActivity() {
                     setTextColor(getColor(R.color.ld_muted))
                 })
                 status = TextView(this@MainActivity).apply {
-                    text = "Checking RootFS Pack 4 and private PulseAudio service…"
+                    text = "Checking RootFS 1 and private PulseAudio service…"
                     textSize = 15f
                     setPadding(0, dp(2), 0, 0)
                     setTextColor(getColor(R.color.ld_text))
@@ -386,9 +385,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun configureStartupServices() {
+    private fun configureStartupServices(distro: InstalledDistro) {
         lifecycleScope.launch {
-            var services = local.settings().startupServices
+            var services = distro.startupServices
             val list = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(20), dp(4), dp(20), dp(4))
@@ -399,9 +398,8 @@ class MainActivity : AppCompatActivity() {
             fun save(updated: List<StartupService>) {
                 services = updated
                 lifecycleScope.launch {
-                    val settings = local.settings()
-                    local.saveSettings(settings.copy(startupServices = services))
-                    showTemporaryRootfsStatus("Startup services saved. Restart the distribution to apply them.")
+                    local.updateInstalled(distro.copy(startupServices = services))
+                    showTemporaryRootfsStatus("Startup services for ${distro.title} saved. Restart this distribution to apply them.")
                 }
             }
             fun render() {
@@ -464,8 +462,8 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             dialog = AlertDialog.Builder(this@MainActivity)
-                .setTitle("Startup services")
-                .setMessage("LinuxDroid runs each enabled command once after the selected distribution starts. Use normal guest-shell commands; they replace only the systemd service use case, not Android background services.")
+                .setTitle("Startup services · ${distro.title}")
+                .setMessage("LinuxDroid runs each enabled command once after ${distro.title} starts. These commands are private to this distribution and replace only the systemd service use case, not Android background services.")
                 .setView(scroll)
                 .setNegativeButton("Close", null)
                 .setPositiveButton("Add service", null)
@@ -532,6 +530,7 @@ class MainActivity : AppCompatActivity() {
             val controls = CheckBox(this@MainActivity).apply { text = "Show on-screen controls"; isChecked = profile.showOnScreenControls }
             val landscape = CheckBox(this@MainActivity).apply { text = "Force landscape while connected"; isChecked = profile.forceLandscape }
             val gamepad = CheckBox(this@MainActivity).apply { text = "Enable floating virtual gamepad"; isChecked = profile.floatingGamepadEnabled }
+            val invertGamepad = CheckBox(this@MainActivity).apply { text = "Invert virtual gamepad arrows"; isChecked = profile.invertGamepadDpad }
             val gamepadOpacity = field(profile.floatingGamepadOpacity.toString(), "Gamepad opacity (25-90%)", InputType.TYPE_CLASS_NUMBER)
             val keepAwake = CheckBox(this@MainActivity).apply { text = "Keep screen awake while connected"; isChecked = profile.keepScreenAwake }
             val form = LinearLayout(this@MainActivity).apply {
@@ -540,7 +539,7 @@ class MainActivity : AppCompatActivity() {
                 addView(host); addView(port); addView(password)
                 addView(label("Input mode")); addView(inputMode)
                 addView(label("Scaling")); addView(scaling)
-                addView(readOnly); addView(controls); addView(landscape); addView(gamepad)
+                addView(readOnly); addView(controls); addView(landscape); addView(gamepad); addView(invertGamepad)
                 addView(label("Floating gamepad appearance")); addView(gamepadOpacity)
                 addView(keepAwake)
             }
@@ -565,7 +564,9 @@ class MainActivity : AppCompatActivity() {
                             showOnScreenControls = controls.isChecked,
                             forceLandscape = landscape.isChecked,
                             floatingGamepadEnabled = gamepad.isChecked,
+                            invertGamepadDpad = invertGamepad.isChecked,
                             floatingGamepadOpacity = opacity,
+                            gamepadButtons = profile.gamepadButtons,
                             keepScreenAwake = keepAwake.isChecked
                         )
                         local.saveSettings(current.copy(vnc = updated))
@@ -781,6 +782,7 @@ class MainActivity : AppCompatActivity() {
                     firstRow.addView(actionButton("VNC", ActionTone.VIOLET) { startActivity(Intent(this@MainActivity, VncActivity::class.java)) }, actionParams(top = 14, end = 0))
                     val secondRow = actionRow()
                     secondRow.addView(actionButton("Setup", ActionTone.WARNING) { showSetup(distro) }, actionParams(top = 8, end = 7))
+                    secondRow.addView(actionButton("Services", ActionTone.PRIMARY) { configureStartupServices(distro) }, actionParams(top = 8, end = 7))
                     secondRow.addView(actionButton("Remove", ActionTone.DANGER) { removeDistro(distro) }, actionParams(top = 8, end = 0))
                     addView(firstRow)
                     addView(secondRow)
@@ -921,11 +923,11 @@ class MainActivity : AppCompatActivity() {
             .onSuccess { loaded ->
                 releaseDistributions = loaded
                 if (::installButton.isInitialized) installButton.isEnabled = loaded.isNotEmpty()
-                status.text = "RootFS Pack 4 online · ${loaded.size} distribution(s) available."
+                status.text = "RootFS 1 online · ${loaded.size} distribution(s) available."
             }
             .onFailure {
                 if (::installButton.isInitialized) installButton.isEnabled = false
-                status.text = "RootFS Pack 4 error: ${it.message}"
+                status.text = "RootFS 1 error: ${it.message}"
             }
     }
 

@@ -63,17 +63,25 @@ class LinuxSessionController(context: Context) : TerminalSessionClient {
         _state.value = SessionState.STARTING
         try {
             val settings = local.settings()
-            val rootfs = File(distro.rootfsDirectory)
+            val launchingDistro = if (distro.startupServices.isEmpty() && settings.startupServices.isNotEmpty()) {
+                // Migrate the 0.4.9 global list once, to the first distribution the user
+                // starts after updating. New services are always stored per distribution.
+                distro.copy(startupServices = settings.startupServices).also { migrated ->
+                    local.updateInstalled(migrated)
+                    local.saveSettings(settings.copy(startupServices = emptyList()))
+                }
+            } else distro
+            val rootfs = File(launchingDistro.rootfsDirectory)
             RootfsLayout.normalizeTopLevelDirectory(rootfs)
             RootfsLayout.rebaseGuestAbsoluteSymlinks(rootfs)
             RootfsLayout.requireGuestShell(rootfs)
 
             val preparedRuntime = runtimeInstaller.ensureInstalled()
-            activeDistro = distro
+            activeDistro = launchingDistro
             activeSettings = settings
             runtime = preparedRuntime
             nextTabNumber = 1
-            sessionLog.begin(distro.title, rootfs, prootCommands.createInteractiveLaunch(distro, preparedRuntime, settings))
+            sessionLog.begin(launchingDistro.title, rootfs, prootCommands.createInteractiveLaunch(launchingDistro, preparedRuntime, settings))
             if (settings.pulseAudioEnabled) {
                 val pulseReady = pulseAudio.start(preparedRuntime)
                 sessionLog.recordRuntimeStatus(
@@ -87,8 +95,8 @@ class LinuxSessionController(context: Context) : TerminalSessionClient {
                 sessionLog.recordRuntimeStatus("PulseAudio is disabled in LinuxDroid settings.")
             }
 
-            val first = createTerminalLocked(distro, preparedRuntime, settings)
-            queueStartupServices(first, settings)
+            val first = createTerminalLocked(launchingDistro, preparedRuntime, settings)
+            queueStartupServices(first, launchingDistro.startupServices)
             _state.value = SessionState.RUNNING
             first
         } catch (error: Throwable) {
@@ -150,17 +158,18 @@ class LinuxSessionController(context: Context) : TerminalSessionClient {
     }
 
     /** Queues enabled guest commands once on the first interactive shell of each boot. */
-    private fun queueStartupServices(firstTerminal: TerminalSession, settings: AppSettings) {
-        val enabled = settings.startupServices.filter { it.enabled && it.command.isNotBlank() }
+    private fun queueStartupServices(firstTerminal: TerminalSession, services: List<io.linuxdroid.app.data.StartupService>) {
+        val enabled = services.filter { it.enabled && it.command.isNotBlank() }
         if (enabled.isEmpty()) return
         val command = buildString {
-            append("printf '\\n[LinuxDroid] Starting configured services…\\n'\\n")
+            // Kotlin newline escapes here intentionally produce real terminal Enter keys.
+            append("printf '\\n[LinuxDroid] Starting configured services…\\n'\n")
             enabled.forEach { service ->
                 val safeId = service.id.filter { it.isLetterOrDigit() || it == '-' }.ifBlank { "service" }
                 append("( ").append(service.command.trim()).append(" )")
-                append(" > /tmp/linuxdroid-startup-").append(safeId).append(".log 2>&1 &\\n")
+                append(" > /tmp/linuxdroid-startup-").append(safeId).append(".log 2>&1 &\n")
             }
-            append("printf '[LinuxDroid] Startup services launched. Logs: /tmp/linuxdroid-startup-*.log\\n'\\n")
+            append("printf '[LinuxDroid] Startup services launched. Logs: /tmp/linuxdroid-startup-*.log\\n'\n")
         }
         firstTerminal.write(command)
         sessionLog.recordRuntimeStatus(

@@ -1,4 +1,4 @@
-name: Publish LinuxDroid Release
+name: Publish LinuxDroid 1.0
 
 on:
   workflow_dispatch:
@@ -8,9 +8,9 @@ permissions:
 
 jobs:
   publish:
-    name: Build and publish LinuxDroid 0.4.0
+    name: Build and publish LinuxDroid 1.0 with RootFS 1
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 70
 
     steps:
       - name: Check out source
@@ -39,38 +39,40 @@ jobs:
       - name: Build installable debug APKs
         run: ./gradlew --no-daemon --stacktrace clean assembleDebug
 
-      - name: Build RootFS Pack 3
+      - name: Build RootFS 1
         run: |
-          chmod +x rootfs/build-rootfs-pack-3.sh
-          rootfs/build-rootfs-pack-3.sh
+          chmod +x rootfs/build-rootfs-1.sh
+          rootfs/build-rootfs-1.sh
 
-      - name: Publish RootFS Pack 3
+      - name: Publish RootFS 1
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create rootfs-pack-3 \
-            rootfs/release-pack-3/linuxdroid-rootfs__*.tar.xz \
-            rootfs/release-pack-3/linuxdroid-rootfs__*.tar.xz.sha256 \
+          gh release create rootfs-1 \
+            rootfs/release-1/linuxdroid-rootfs__*.tar.xz \
+            rootfs/release-1/linuxdroid-rootfs__*.tar.xz.sha256 \
+            rootfs/release-1/ROOTFS_RELEASE_NOTES.md \
+            rootfs/release-1/ROOTFS_SOURCES.md \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "LinuxDroid RootFS Pack 3 — Audio and MOTD repair" \
-            --notes-file rootfs/release-pack-3/ROOTFS_RELEASE_NOTES.md
+            --title "LinuxDroid RootFS 1 — official images" \
+            --notes-file rootfs/release-1/ROOTFS_RELEASE_NOTES.md
 
-      - name: Publish LinuxDroid 0.4.0
+      - name: Publish LinuxDroid 1.0
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.4.0 \
-            app/build/outputs/apk/debug/app-arm64-v8a-debug.apk#LinuxDroid-v0.4.0-arm64-v8a-debug.apk \
-            app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk#LinuxDroid-v0.4.0-armeabi-v7a-debug.apk \
+          gh release create v1.0 \
+            app/build/outputs/apk/debug/app-arm64-v8a-debug.apk#LinuxDroid-v1.0-arm64-v8a-debug.apk \
+            app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk#LinuxDroid-v1.0-armeabi-v7a-debug.apk \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "LinuxDroid v0.4.0 — Audio, MOTD and navigation" \
-            --notes "LinuxDroid 0.4.0 repairs the embedded PulseAudio runtime, adds ALSA exports and MOTD display for new RootFS images, and reorganizes the app with bottom navigation, detailed tools, and LinuxDroid settings."
+            --title "LinuxDroid 1.0 — official release" \
+            --notes "LinuxDroid 1.0 is the first official release. It includes PRoot Linux environments, internal terminal and VNC, PulseAudio support, verified RootFS 1 images, configurable per-distribution startup services, a full-screen VNC viewer, and a customizable virtual gamepad."
 
       - name: Remove replaced releases
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete rootfs-pack-2 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
-          gh release delete v0.3.1 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release delete rootfs-pack-4 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release delete v0.4.9 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true

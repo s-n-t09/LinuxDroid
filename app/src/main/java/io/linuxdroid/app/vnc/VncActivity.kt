@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
@@ -12,26 +13,38 @@ import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import io.linuxdroid.app.data.GamepadButtonConfig
 import io.linuxdroid.app.data.LocalRepository
 import io.linuxdroid.app.data.VncProfile
 import kotlinx.coroutines.launch
+import java.util.UUID
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
-/** Internal mobile VNC viewer with a complete bottom key strip and optional floating game controls. */
+/** Internal VNC viewer with immersive full-screen output and a configurable virtual gamepad. */
 class VncActivity : AppCompatActivity() {
     private lateinit var canvas: VncCanvasView
     private lateinit var status: TextView
     private lateinit var root: FrameLayout
     private lateinit var content: LinearLayout
+    private lateinit var repository: LocalRepository
     private var gamepadOverlay: FrameLayout? = null
+    private var activeProfile: VncProfile? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        repository = LocalRepository(this)
         root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -39,8 +52,10 @@ class VncActivity : AppCompatActivity() {
         }
         status = TextView(this).apply {
             setTextColor(Color.WHITE)
-            setPadding(20, 12, 20, 12)
+            setPadding(dp(16), dp(7), dp(16), dp(7))
+            textSize = 12f
             text = "Preparing VNC…"
+            setBackgroundColor(0xA6000000.toInt())
         }
         canvas = VncCanvasView(this).apply {
             onStatus = { value -> status.text = value }
@@ -53,9 +68,11 @@ class VncActivity : AppCompatActivity() {
         content.addView(canvas, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         root.addView(content, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         setContentView(root)
+        enterFullscreen()
 
         lifecycleScope.launch {
-            val profile = LocalRepository(this@VncActivity).settings().vnc
+            val profile = repository.settings().vnc
+            activeProfile = profile
             requestedOrientation = if (profile.forceLandscape) {
                 ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             } else {
@@ -70,16 +87,29 @@ class VncActivity : AppCompatActivity() {
         }
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) enterFullscreen()
+    }
+
     override fun onDestroy() {
         canvas.disconnect()
         super.onDestroy()
+    }
+
+    private fun enterFullscreen() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, root).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
     }
 
     private fun buildBottomControls(): HorizontalScrollView {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(8, 8, 8, 8)
+            setPadding(dp(6), dp(6), dp(6), dp(6))
             setBackgroundColor(0xED111827.toInt())
         }
         fun button(label: String, action: () -> Unit) = Button(this).apply {
@@ -139,6 +169,7 @@ class VncActivity : AppCompatActivity() {
             getSystemService(InputMethodManager::class.java).showSoftInput(canvas, InputMethodManager.SHOW_IMPLICIT)
         }
         button("Gamepad") { toggleGamepad() }
+        button("Edit pad") { editGamepad() }
         button("Disconnect") { finish() }
         return HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
@@ -146,47 +177,62 @@ class VncActivity : AppCompatActivity() {
         }
     }
 
-    /** Adds independent, card-free buttons so the gamepad stays visible without obscuring the desktop. */
     private fun addGamepad(profile: VncProfile) {
         val overlay = FrameLayout(this).apply {
             visibility = if (profile.floatingGamepadEnabled) View.VISIBLE else View.GONE
             isClickable = false
             isFocusable = false
         }
-        val opacity = profile.floatingGamepadOpacity.coerceIn(25, 90) / 100f
-        val bottom = 106
-        fun add(label: String, keySym: Int, gravity: Int, left: Int = 0, right: Int = 0, below: Int) {
-            overlay.addView(
-                gameButton(label, keySym, opacity),
-                FrameLayout.LayoutParams(dp(54), dp(54), gravity).apply {
-                    setMargins(dp(left), 0, dp(right), dp(below))
-                }
-            )
-        }
-
-        // Direction buttons occupy the left edge and action buttons the right edge.
-        add("↑", 0xff52, Gravity.BOTTOM or Gravity.START, left = 78, below = bottom + 72)
-        add("←", 0xff51, Gravity.BOTTOM or Gravity.START, left = 18, below = bottom + 18)
-        add("→", 0xff53, Gravity.BOTTOM or Gravity.START, left = 138, below = bottom + 18)
-        add("↓", 0xff54, Gravity.BOTTOM or Gravity.START, left = 78, below = bottom - 36)
-
-        add("Y", 's'.code, Gravity.BOTTOM or Gravity.END, right = 78, below = bottom + 72)
-        add("X", 'a'.code, Gravity.BOTTOM or Gravity.END, right = 138, below = bottom + 18)
-        add("B", 'x'.code, Gravity.BOTTOM or Gravity.END, right = 18, below = bottom + 18)
-        add("A", 'z'.code, Gravity.BOTTOM or Gravity.END, right = 78, below = bottom - 36)
-
         root.addView(overlay, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         gamepadOverlay = overlay
+        overlay.post { renderGamepad(profile) }
+    }
+
+    private fun renderGamepad(profile: VncProfile) {
+        val overlay = gamepadOverlay ?: return
+        if (overlay.width == 0 || overlay.height == 0) {
+            overlay.post { renderGamepad(profile) }
+            return
+        }
+        overlay.removeAllViews()
+        val occupied = mutableListOf<Rect>()
+        profile.gamepadButtons.filter { it.enabled }.forEach { button ->
+            val view = gameButton(button, profile)
+            val position = resolveInitialPosition(button, occupied, overlay)
+            overlay.addView(view, FrameLayout.LayoutParams(dp(54), dp(54), Gravity.TOP or Gravity.START).apply {
+                leftMargin = position.first
+                topMargin = position.second
+            })
+            occupied += Rect(position.first, position.second, position.first + dp(54), position.second + dp(54))
+        }
+    }
+
+    private fun resolveInitialPosition(button: GamepadButtonConfig, occupied: List<Rect>, overlay: FrameLayout): Pair<Int, Int> {
+        val size = dp(54)
+        val maxX = (overlay.width - size).coerceAtLeast(0)
+        val maxY = (overlay.height - size).coerceAtLeast(0)
+        var x = (maxX * button.xPercent.coerceIn(0, 100) / 100f).roundToInt()
+        var y = (maxY * button.yPercent.coerceIn(0, 100) / 100f).roundToInt()
+        repeat(48) {
+            val candidate = Rect(x, y, x + size, y + size)
+            if (occupied.none { intersectsWithGap(it, candidate) }) return x to y
+            y += dp(16)
+            if (y > maxY) {
+                y = dp(8).coerceAtMost(maxY)
+                x = (x + dp(16)) % (maxX + 1)
+            }
+        }
+        return x to y
     }
 
     private fun toggleGamepad() {
         val overlay = gamepadOverlay ?: return
         overlay.visibility = if (overlay.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-        status.text = if (overlay.visibility == View.VISIBLE) "Virtual gamepad enabled." else "Virtual gamepad hidden."
+        status.text = if (overlay.visibility == View.VISIBLE) "Virtual gamepad enabled. Drag a button to reposition it." else "Virtual gamepad hidden."
     }
 
-    private fun gameButton(label: String, keySym: Int, opacity: Float): Button = Button(this).apply {
-        text = label
+    private fun gameButton(config: GamepadButtonConfig, profile: VncProfile): Button = Button(this).apply {
+        text = config.label
         textSize = 17f
         typeface = android.graphics.Typeface.DEFAULT_BOLD
         isAllCaps = false
@@ -194,7 +240,7 @@ class VncActivity : AppCompatActivity() {
         minimumHeight = 0
         minWidth = 0
         minimumWidth = 0
-        alpha = opacity
+        alpha = profile.floatingGamepadOpacity.coerceIn(25, 90) / 100f
         elevation = dp(5).toFloat()
         setTextColor(Color.WHITE)
         background = GradientDrawable().apply {
@@ -202,12 +248,189 @@ class VncActivity : AppCompatActivity() {
             setColor(0xD9344B73.toInt())
             setStroke(dp(1), 0xB0E8F2FF.toInt())
         }
-        setOnTouchListener { _, event ->
+        attachGamepadTouch(this, config)
+    }
+
+    private fun attachGamepadTouch(button: View, config: GamepadButtonConfig) {
+        val slop = dp(9).toFloat()
+        var startRawX = 0f
+        var startRawY = 0f
+        var startLeft = 0
+        var startTop = 0
+        var pressed = false
+        var dragging = false
+        button.setOnTouchListener { view, event ->
+            val overlay = gamepadOverlay ?: return@setOnTouchListener false
+            val params = view.layoutParams as FrameLayout.LayoutParams
             when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> canvas.setVirtualKey(keySym, true)
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_UP -> canvas.setVirtualKey(keySym, false)
+                MotionEvent.ACTION_DOWN -> {
+                    startRawX = event.rawX
+                    startRawY = event.rawY
+                    startLeft = params.leftMargin
+                    startTop = params.topMargin
+                    dragging = false
+                    pressed = true
+                    canvas.setVirtualKey(effectiveKey(config), true)
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - startRawX
+                    val dy = event.rawY - startRawY
+                    if (!dragging && (abs(dx) > slop || abs(dy) > slop)) {
+                        dragging = true
+                        if (pressed) {
+                            canvas.setVirtualKey(effectiveKey(config), false)
+                            pressed = false
+                        }
+                    }
+                    if (dragging) {
+                        val maxX = (overlay.width - view.width).coerceAtLeast(0)
+                        val maxY = (overlay.height - view.height).coerceAtLeast(0)
+                        val targetX = (startLeft + dx).roundToInt().coerceIn(0, maxX)
+                        val targetY = (startTop + dy).roundToInt().coerceIn(0, maxY)
+                        if (!overlapsAnotherButton(overlay, view, targetX, targetY)) {
+                            params.leftMargin = targetX
+                            params.topMargin = targetY
+                            params.gravity = Gravity.TOP or Gravity.START
+                            view.layoutParams = params
+                        }
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (pressed) canvas.setVirtualKey(effectiveKey(config), false)
+                    if (dragging) saveButtonPosition(config, params.leftMargin, params.topMargin, overlay)
+                    true
+                }
+                else -> true
             }
-            true
+        }
+    }
+
+    private fun effectiveKey(config: GamepadButtonConfig): Int {
+        val profile = activeProfile ?: return config.keySym
+        if (!profile.invertGamepadDpad) return config.keySym
+        return when (config.id) {
+            "up" -> 0xff54
+            "down" -> 0xff52
+            "left" -> 0xff53
+            "right" -> 0xff51
+            else -> config.keySym
+        }
+    }
+
+    private fun overlapsAnotherButton(overlay: FrameLayout, current: View, left: Int, top: Int): Boolean {
+        val proposed = Rect(left, top, left + current.width, top + current.height)
+        for (index in 0 until overlay.childCount) {
+            val child = overlay.getChildAt(index)
+            if (child === current || child.visibility != View.VISIBLE) continue
+            val occupied = Rect(child.left, child.top, child.right, child.bottom)
+            if (intersectsWithGap(proposed, occupied)) return true
+        }
+        return false
+    }
+
+    private fun intersectsWithGap(first: Rect, second: Rect): Boolean {
+        val gap = dp(8)
+        return first.left < second.right + gap && first.right + gap > second.left &&
+            first.top < second.bottom + gap && first.bottom + gap > second.top
+    }
+
+    private fun saveButtonPosition(config: GamepadButtonConfig, left: Int, top: Int, overlay: FrameLayout) {
+        val profile = activeProfile ?: return
+        val maxX = (overlay.width - dp(54)).coerceAtLeast(1)
+        val maxY = (overlay.height - dp(54)).coerceAtLeast(1)
+        val updated = profile.copy(gamepadButtons = profile.gamepadButtons.map {
+            if (it.id == config.id) it.copy(
+                xPercent = (left * 100f / maxX).roundToInt().coerceIn(0, 100),
+                yPercent = (top * 100f / maxY).roundToInt().coerceIn(0, 100)
+            ) else it
+        })
+        updateProfile(updated)
+        status.text = "${config.label} position saved."
+    }
+
+    private fun editGamepad() {
+        val profile = activeProfile ?: return
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(2), dp(20), dp(2))
+        }
+        profile.gamepadButtons.forEach { config ->
+            val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+            row.addView(TextView(this).apply {
+                text = config.label
+                textSize = 18f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+            }, LinearLayout.LayoutParams(dp(42), dp(48)))
+            row.addView(CheckBox(this).apply {
+                text = "Show"
+                isChecked = config.enabled
+                setOnCheckedChangeListener { _, enabled ->
+                    updateProfile(profile.copy(gamepadButtons = profile.gamepadButtons.map { if (it.id == config.id) it.copy(enabled = enabled) else it }))
+                }
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(Button(this).apply {
+                text = "Delete"
+                isAllCaps = false
+                setOnClickListener {
+                    updateProfile(profile.copy(gamepadButtons = profile.gamepadButtons.filterNot { it.id == config.id }))
+                    editGamepad()
+                }
+            })
+            list.addView(row)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Edit virtual gamepad")
+            .setMessage("Tap a button to use it; drag it to move it. Buttons cannot overlap.")
+            .setView(list)
+            .setNegativeButton("Close", null)
+            .setPositiveButton("Add button", null)
+            .show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            dialog.dismiss()
+            chooseGamepadButton()
+        }
+    }
+
+    private fun chooseGamepadButton() {
+        val options = listOf(
+            "↑" to 0xff52, "↓" to 0xff54, "←" to 0xff51, "→" to 0xff53,
+            "Space" to 0x20, "Enter" to 0xff0d, "Esc" to 0xff1b, "Tab" to 0xff09,
+            "F1" to 0xffbe, "F2" to 0xffbf, "F3" to 0xffc0, "F4" to 0xffc1
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Add gamepad button")
+            .setItems(options.map { it.first }.toTypedArray()) { _, index ->
+                val profile = activeProfile
+                if (profile != null) {
+                    val slot = nextFreeSlot(profile)
+                    val added = GamepadButtonConfig(
+                        id = "custom-${UUID.randomUUID()}",
+                        label = options[index].first,
+                        keySym = options[index].second,
+                        xPercent = slot.first,
+                        yPercent = slot.second
+                    )
+                    updateProfile(profile.copy(gamepadButtons = profile.gamepadButtons + added))
+                    editGamepad()
+                }
+            }.show()
+    }
+
+    private fun nextFreeSlot(profile: VncProfile): Pair<Int, Int> {
+        val candidates = listOf(45 to 42, 55 to 42, 45 to 52, 55 to 52, 35 to 42, 65 to 42, 35 to 52, 65 to 52)
+        return candidates.firstOrNull { candidate ->
+            profile.gamepadButtons.none { abs(it.xPercent - candidate.first) < 10 && abs(it.yPercent - candidate.second) < 10 }
+        } ?: (50 to 50)
+    }
+
+    private fun updateProfile(updated: VncProfile) {
+        activeProfile = updated
+        renderGamepad(updated)
+        lifecycleScope.launch {
+            val settings = repository.settings()
+            repository.saveSettings(settings.copy(vnc = updated))
         }
     }
 

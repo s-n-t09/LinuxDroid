@@ -25,7 +25,7 @@ class RootfsReleaseClient {
     companion object {
         const val OWNER = "s-n-t09"
         const val REPOSITORY = "LinuxDroid"
-        const val ROOTFS_RELEASE_TAG = "rootfs-pack-4"
+        const val ROOTFS_RELEASE_TAG = "rootfs-1"
         private const val API_VERSION = "2022-11-28"
         private val assetPattern = Regex(
             "^linuxdroid-rootfs__([a-z0-9][a-z0-9-]{0,62})__([a-z0-9][a-z0-9._-]{0,63})__(arm64-v8a|armeabi-v7a)\\.tar\\.xz$"
