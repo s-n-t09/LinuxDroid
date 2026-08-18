@@ -17,6 +17,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build RootFS 1
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           chmod +x rootfs/build-rootfs-1.sh
           rootfs/build-rootfs-1.sh

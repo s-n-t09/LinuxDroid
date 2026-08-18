@@ -24,8 +24,17 @@ mkdir -p "$OUT_DIR" "$CACHE_DIR" "$WORK_DIR"
 rm -f "$OUT_DIR"/linuxdroid-rootfs__*.tar.xz "$OUT_DIR"/linuxdroid-rootfs__*.tar.xz.sha256
 
 # GitHub returns release entries newest first. Preserve the first verified asset for each ABI.
+# CI sends GH_TOKEN to avoid unauthenticated GitHub API rate limits on shared runners.
 if [[ ! -s "$RELEASES_JSON" || "${REFRESH_SOURCES:-0}" == 1 ]]; then
-  curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
+  api_headers=(
+    -H "Accept: application/vnd.github+json"
+    -H "User-Agent: LinuxDroid-RootFS/1.0"
+    -H "X-GitHub-Api-Version: 2022-11-28"
+  )
+  if [[ -n "${GH_TOKEN:-}" ]]; then
+    api_headers+=( -H "Authorization: Bearer $GH_TOKEN" )
+  fi
+  curl --fail --location --retry 3 --proto '=https' --tlsv1.2 "${api_headers[@]}" \
     "https://api.github.com/repos/$UPSTREAM_REPO/releases?per_page=100" -o "$RELEASES_JSON"
 fi
 
