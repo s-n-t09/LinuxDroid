@@ -1,4 +1,4 @@
-name: Publish LinuxDroid 1.0
+name: Refresh LinuxDroid 1.0
 
 on:
   workflow_dispatch:
@@ -8,13 +8,15 @@ permissions:
 
 jobs:
   publish:
-    name: Build and publish LinuxDroid 1.0 with RootFS 1
+    name: Rebuild LinuxDroid 1.0 and RootFS 1
     runs-on: ubuntu-24.04
     timeout-minutes: 70
 
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -46,35 +48,46 @@ jobs:
           chmod +x rootfs/build-rootfs-1.sh
           rootfs/build-rootfs-1.sh
 
-      - name: Publish RootFS 1
+      - name: Point official 1.0 tags at this verified source
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create rootfs-1 \
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f rootfs-1 "$GITHUB_SHA"
+          git tag -f v1.0 "$GITHUB_SHA"
+          git push --force origin refs/tags/rootfs-1 refs/tags/v1.0
+
+      - name: Replace RootFS 1 assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view rootfs-1 --repo "$GITHUB_REPOSITORY" >/dev/null
+          gh release view rootfs-1 --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | while IFS= read -r asset; do
+            gh release delete-asset rootfs-1 "$asset" --repo "$GITHUB_REPOSITORY" --yes
+          done
+          gh release upload rootfs-1 \
             rootfs/release-1/linuxdroid-rootfs__*.tar.xz \
             rootfs/release-1/linuxdroid-rootfs__*.tar.xz.sha256 \
             rootfs/release-1/ROOTFS_RELEASE_NOTES.md \
             rootfs/release-1/ROOTFS_SOURCES.md \
+            --repo "$GITHUB_REPOSITORY"
+          gh release edit rootfs-1 \
             --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "LinuxDroid RootFS 1 — official images" \
+            --title "LinuxDroid RootFS 1 — refreshed images" \
             --notes-file rootfs/release-1/ROOTFS_RELEASE_NOTES.md
 
-      - name: Publish LinuxDroid 1.0
+      - name: Replace LinuxDroid 1.0 APKs
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v1.0 \
-            app/build/outputs/apk/debug/app-arm64-v8a-debug.apk#LinuxDroid-v1.0-arm64-v8a-debug.apk \
-            app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk#LinuxDroid-v1.0-armeabi-v7a-debug.apk \
+          gh release view v1.0 --repo "$GITHUB_REPOSITORY" >/dev/null
+          gh release upload v1.0 \
+            app/build/outputs/apk/debug/app-arm64-v8a-debug.apk#app-arm64-v8a-debug.apk \
+            app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk#app-armeabi-v7a-debug.apk \
             --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "LinuxDroid 1.0 — official release" \
-            --notes "LinuxDroid 1.0 is the first official release. It includes PRoot Linux environments, internal terminal and VNC, PulseAudio support, verified RootFS 1 images, configurable per-distribution startup services, a full-screen VNC viewer, and a customizable virtual gamepad."
-
-      - name: Remove replaced releases
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release delete rootfs-pack-4 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
-          gh release delete v0.4.9 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+            --clobber
+          gh release edit v1.0 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "LinuxDroid 1.0 — refreshed official build" \
+            --notes "Refreshed LinuxDroid 1.0 application and RootFS 1 assets from the current verified source. This maintenance build restores reliable modern RootFS shell startup, correct Ctrl/Alt terminal input, and Debian package-state compatibility without changing the version number."

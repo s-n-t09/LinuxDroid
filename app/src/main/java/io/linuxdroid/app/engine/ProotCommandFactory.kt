@@ -6,6 +6,7 @@ import android.os.Environment
 import io.linuxdroid.app.data.AppSettings
 import io.linuxdroid.app.data.InstalledDistro
 import java.io.File
+import java.nio.file.Files
 
 data class ProotLaunch(
     val shellPath: String,
@@ -30,14 +31,15 @@ class ProotCommandFactory(private val context: Context) {
         val prootTemporaryDirectory = File(root, ".linuxdroid-proot-tmp").apply { mkdirs() }
         val command = mutableListOf(
             shellQuote(runtime.proot.absolutePath),
-            "--link2symlink",
+            // Do not enable link2symlink. The RootFS lives in the app-private
+            // directory owned by this process, so dpkg can use real hard links
+            // for its statoverride backup transaction.
             "-0",
             "-r", shellQuote(root.absolutePath),
-            // Bind guest executable and loader paths to avoid Android host resolution
-            // for ELF interpreters during the first guest execve.
-            "-b", "${shellQuote(root.absolutePath)}/bin:/bin",
-            "-b", "${shellQuote(root.absolutePath)}/lib:/lib",
-            "-b", "${shellQuote(root.absolutePath)}/usr:/usr",
+            // Do not bind /bin, /lib, or /usr over the guest root. Modern images
+            // commonly make these paths symlinks into /usr; rebinding them can
+            // bypass PRoot's guest-path resolution and leave the login shell inert.
+            // PROOT_LOADER below handles the first guest ELF interpreter safely.
             "-b", "/dev",
             "-b", "/proc",
             "-b", "/sys",
@@ -54,7 +56,10 @@ class ProotCommandFactory(private val context: Context) {
                 ))
             }
         }
-        if (distro.id == "debian-trixie") prepareDebianResolver(root)
+        if (distro.id == "debian-trixie") {
+            prepareDebianResolver(root)
+            prepareDebianDpkgState(root)
+        }
         command.addAll(listOf("-w", "/root", guestShell, "-l"))
         val environment = mutableListOf(
             "HOME=/root",
@@ -112,6 +117,26 @@ class ProotCommandFactory(private val context: Context) {
             append("options timeout:2 attempts:3\n")
         })
         resolver.setReadable(true, false)
+    }
+
+    /**
+     * Some imported Debian states have a directory or stale symbolic link at
+     * statoverride(-old). dpkg-statoverride must replace regular files there;
+     * repairing only invalid entries preserves a healthy package database while
+     * preventing dbus and PulseAudio package setup from failing under PRoot.
+     */
+    private fun prepareDebianDpkgState(root: File) {
+        val admin = File(root, "var/lib/dpkg").apply { mkdirs() }
+        val state = File(admin, "statoverride")
+        val backup = File(admin, "statoverride-old")
+        if (state.isDirectory || Files.isSymbolicLink(state.toPath())) state.deleteRecursively()
+        if (!state.exists()) state.writeText("")
+        state.setReadable(true, false)
+        state.setWritable(true, false)
+        if (backup.isDirectory || Files.isSymbolicLink(backup.toPath())) backup.deleteRecursively()
+        // dpkg creates a new backup before every update. A stale unusable backup
+        // is never authoritative and can block that atomic replacement.
+        if (backup.exists()) backup.delete()
     }
 
     private fun activeDnsServers(): List<String> {

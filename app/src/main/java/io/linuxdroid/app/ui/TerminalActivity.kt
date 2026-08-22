@@ -341,11 +341,14 @@ class TerminalActivity : AppCompatActivity(), TerminalViewClient {
     override fun readShiftKey(): Boolean = shift
     override fun readFnKey(): Boolean = fn
     override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession): Boolean {
-        // Termux exposes Ctrl as a flag. Alt/Meta is represented on a terminal by an ESC prefix.
-        if (alt) session.write("\u001b")
-        session.writeCodePoint(ctrlDown || control, codePoint)
-        if (control || alt || shift || fn) clearOneShotModifiers()
-        return true
+        // Returning false delegates Ctrl/Alt conversion to TerminalView. Its
+        // writeCodePoint(boolean, codePoint) boolean means *prepend ESC* (Alt),
+        // not Ctrl; forwarding Ctrl there used to send visible ESC+c instead of
+        // byte 0x03 and therefore could not interrupt a foreground command.
+        if (control || alt || shift || fn) {
+            terminalView.post { clearOneShotModifiers() }
+        }
+        return false
     }
 
     private fun clearOneShotModifiers() {

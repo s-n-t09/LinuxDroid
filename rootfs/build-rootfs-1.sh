@@ -206,6 +206,12 @@ nameserver 1.1.1.1
 nameserver 8.8.8.8
 options timeout:2 attempts:3
 EOF
+      # dpkg-statoverride atomically replaces this state file during package
+      # configuration. Seed a normal writable file, never a link or directory.
+      mkdir -p "$stage/var/lib/dpkg"
+      rm -rf "$stage/var/lib/dpkg/statoverride" "$stage/var/lib/dpkg/statoverride-old"
+      : > "$stage/var/lib/dpkg/statoverride"
+      chmod 0644 "$stage/var/lib/dpkg/statoverride"
       cat > "$stage/etc/apt/sources.list.d/debian.sources" <<'EOF'
 Types: deb
 URIs: https://deb.debian.org/debian

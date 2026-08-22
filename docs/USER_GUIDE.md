@@ -4,7 +4,7 @@
 
 LinuxDroid needs an Android device with an ARM processor supported by the selected RootFS. Most modern devices are `arm64-v8a`; older 32-bit devices are commonly `armeabi-v7a`. The RootFS architecture must match the device. The app runs a Linux **userland**, not a complete virtual machine: it cannot boot a Linux kernel, gain Android root, run Docker, load kernel modules, or reliably use systemd. [1]
 
-Wait for the **RootFS release status** card to report that the LinuxDroid release is online, then choose **Install distro**. LinuxDroid discovers compatible archives directly from the project's `rootfs-pack-1` GitHub Release and verifies every archive against its published SHA-256 sidecar before extraction. Select an image compatible with the device ABI and wait for verification and extraction to finish. You may install several distributions, but LinuxDroid allows only one active session so two PRoot processes cannot compete for memory and storage.
+Wait for the **RootFS release status** card to report that the LinuxDroid release is online, then choose **Install distro**. LinuxDroid discovers compatible archives directly from the project's `rootfs-1` GitHub Release and verifies every archive against its published SHA-256 sidecar before extraction. Select an image compatible with the device ABI and wait for verification and extraction to finish. You may install several distributions, but LinuxDroid allows only one active session so two PRoot processes cannot compete for memory and storage.
 
 ## 2. Shared files and privacy
 
@@ -28,7 +28,7 @@ After setup completes, run the following command inside the Linux terminal:
 ~/start-linuxdroid-desktop
 ```
 
-This starts a localhost-only VNC server on display `:1`, normally `127.0.0.1:5901`. Open **Configure internal VNC** to set the port, password, view-only mode, and desktop command. Then select **VNC** next to the installed distribution. Keep the VNC host at `127.0.0.1` for local desktop sessions. Do not expose VNC to Wi-Fi, mobile data, port-forwarding, or the public Internet without an authenticated encrypted tunnel.
+This starts a localhost-only VNC server on display `:1`, normally `127.0.0.1:5901`. Open **Configure VNC** to set the port, password, view-only mode, input mode, screen orientation, and virtual gamepad behavior. Then select **VNC** next to the installed distribution. Keep the VNC host at `127.0.0.1` for local desktop sessions. Do not expose VNC to Wi-Fi, mobile data, port-forwarding, or the public Internet without an authenticated encrypted tunnel.
 
 ## 5. Audio through PulseAudio
 
@@ -71,7 +71,9 @@ If the device still kills LinuxDroid, restart the session and use a lighter desk
 | VNC connection refused | Desktop server is not running or wrong port. | Run `~/start-linuxdroid-desktop`; verify `127.0.0.1:5901`. |
 | VNC authentication failed | Saved password differs from `~/.vnc/passwd`. | Set a new password with `vncpasswd`, then update internal VNC settings. |
 | Desktop starts then closes | Missing D-Bus or incompatible desktop package. | Re-run setup; inspect `~/.vnc/*.log`; try Fluxbox. |
-| No sound | PulseAudio host runtime missing or guest client absent. | Rebuild runtime, restart session, install guest PulseAudio client utilities, and read logs. |
+| No sound | PulseAudio host runtime missing or guest client absent. | Restart the distribution, run `linuxdroid-audio setup`, then run `linuxdroid-audio test`. |
+| `dpkg-statoverride ... Operation not permitted` | A stale or invalid Debian statoverride state from an earlier image. | Update LinuxDroid, stop Debian completely, start it again, then run `dpkg --configure -a` followed by the package command again. |
+| Ctrl+C prints instead of stopping a command | An earlier terminal build sent an Escape-prefixed character rather than byte `0x03`. | Update LinuxDroid, reopen the terminal, tap **CTRL** then **C**, and verify the command receives `^C`. |
 | Cannot see `/sdcard` | Optional broad storage permission not granted or binding disabled. | Enable shared-storage binding and grant the system’s All files access setting. |
 
 ## References
